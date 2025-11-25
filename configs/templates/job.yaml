@@ -1,0 +1,26 @@
+# Validation Job Template
+# This job is used to validate cluster configuration
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "validation-{{ .clusterId }}"
+  namespace: "cluster-{{ .clusterId }}"
+  labels:
+    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+    hyperfleet.io/job-type: "validation"
+    hyperfleet.io/resource-type: "job"
+    hyperfleet.io/managed-by: "{{ .metadata.name }}"
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: validator
+          image: "quay.io/hyperfleet/validator:v1.0.0"
+          env:
+            - name: CLUSTER_ID
+              value: "{{ .clusterId }}"
+            - name: GENERATION_ID
+              value: "{{ .eventGenerationId }}"
+

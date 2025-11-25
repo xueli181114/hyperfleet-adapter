@@ -40,7 +40,7 @@ echo "   Checking integration image configuration..."
 if [ -z "$INTEGRATION_ENVTEST_IMAGE" ]; then
     echo "   INTEGRATION_ENVTEST_IMAGE not set, using local image"
     
-    if ! $CONTAINER_RUNTIME images localhost/hyperfleet-integration-test:latest 2>/dev/null | grep -q "hyperfleet-integration-test"; then
+    if ! $CONTAINER_RUNTIME images | grep -q "hyperfleet-integration-test"; then
         echo "   ⚠️  Local integration image not found. Building it..."
         echo ""
         cd "$PROJECT_ROOT"

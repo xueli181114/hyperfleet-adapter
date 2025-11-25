@@ -21,11 +21,11 @@ data:
   # ============================================================================
   # REQUIRED: The subscription that the adapter should consume from
   # This is used by the broker consumer, not the broker library
-  SUBSCRIPTION_ID: "hyperfleet-adapter-subscription"
+  BROKER_SUBSCRIPTION_ID: "hyperfleet-adapter-subscription"
 
   # REQUIRED: The topic that the adapter should consume from
   # This is used by the broker consumer, not the broker library
-  TOPIC: "hyperfleet-adapter-topic"
+  BROKER_TOPIC: "hyperfleet-adapter-topic"
 
   # ============================================================================
   # Broker Configuration (broker.yaml)
@@ -90,11 +90,11 @@ data:
 #         imagePullPolicy: Always
 #         env:
 #         # Adapter-specific configuration
-#         - name: SUBSCRIPTION_ID
+#         - name: BROKER_SUBSCRIPTION_ID
 #           valueFrom:
 #             configMapKeyRef:
 #               name: hyperfleet-broker-config
-#               key: SUBSCRIPTION_ID
+#               key: BROKER_SUBSCRIPTION_ID
 #         # Point to broker config file
 #         - name: BROKER_CONFIG_FILE
 #           value: /etc/broker/broker.yaml

@@ -6,6 +6,8 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +36,8 @@ type ContainerConfig struct {
 	// StartupTimeout is the maximum time to wait for container to start (default: 180s)
 	StartupTimeout time.Duration
 
-	// CleanupTimeout is the maximum time to wait for container cleanup (default: 30s)
+	// CleanupTimeout is the maximum time to wait for container cleanup (default: 60s)
+	// Note: The cleanup path enforces a minimum of 60s to ensure containers have time to stop gracefully.
 	CleanupTimeout time.Duration
 
 	// MaxRetries is the number of times to retry container creation (default: 1, no retries)
@@ -71,7 +74,7 @@ func (r *ContainerResult) GetEndpoint(portSpec string) string {
 func DefaultContainerConfig() ContainerConfig {
 	return ContainerConfig{
 		StartupTimeout: 180 * time.Second,
-		CleanupTimeout: 30 * time.Second,
+		CleanupTimeout: 60 * time.Second,
 		MaxRetries:     1,
 		RetryDelay:     time.Second,
 		Name:           "container",
@@ -101,7 +104,7 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 		config.StartupTimeout = 180 * time.Second
 	}
 	if config.CleanupTimeout == 0 {
-		config.CleanupTimeout = 30 * time.Second
+		config.CleanupTimeout = 60 * time.Second
 	}
 	if config.MaxRetries == 0 {
 		config.MaxRetries = 1
@@ -151,6 +154,21 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 			break // Success!
 		}
 
+		// If container was created but failed to start fully (e.g. wait strategy timeout),
+		// ensure we terminate it before retrying to avoid leaks
+		if container != nil {
+			t.Logf("Attempt %d failed but container was created. Terminating...", attempt)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if termErr := container.Terminate(ctx); termErr != nil {
+				t.Logf("Warning: Failed to terminate failed container from attempt %d: %v", attempt, termErr)
+				// Try force cleanup
+				if cid := container.GetContainerID(); cid != "" {
+					forceCleanupContainer(t, cid)
+				}
+			}
+			cancel()
+		}
+
 		if attempt < config.MaxRetries {
 			t.Logf("Attempt %d failed for %s container: %v", attempt, config.Name, err)
 		}
@@ -158,14 +176,31 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 
 	// Register cleanup BEFORE checking error to ensure container cleanup even on partial failure
 	if container != nil {
+		// Capture container ID for cleanup - this is the specific container we started
+		containerID := container.GetContainerID()
+		containerName := config.Name
+
 		t.Cleanup(func() {
-			t.Logf("Stopping and removing %s container...", config.Name)
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), config.CleanupTimeout)
+			t.Logf("Stopping and removing %s container (ID: %s)...", containerName, containerID)
+
+			// Use longer timeout for cleanup to prevent stuck containers
+			cleanupTimeout := config.CleanupTimeout
+			if cleanupTimeout < 60*time.Second {
+				cleanupTimeout = 60 * time.Second
+			}
+
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
+
 			if termErr := container.Terminate(cleanupCtx); termErr != nil {
-				t.Logf("Warning: Failed to terminate %s container: %v", config.Name, termErr)
+				t.Logf("Warning: Failed to terminate %s container gracefully: %v", containerName, termErr)
+
+				// Try force cleanup by specific container ID
+				if containerID != "" {
+					forceCleanupContainer(t, containerID)
+				}
 			} else {
-				t.Logf("%s container stopped and removed successfully", config.Name)
+				t.Logf("%s container stopped and removed successfully", containerName)
 			}
 		})
 	}
@@ -197,6 +232,76 @@ func StartContainer(t *testing.T, config ContainerConfig) (*ContainerResult, err
 		Host:      host,
 		Ports:     ports,
 	}, nil
+}
+
+// forceCleanupContainer attempts to force remove a specific container using docker/podman CLI.
+// This is a fallback when testcontainers' Terminate() fails.
+//
+// Note: This function requires either 'docker' or 'podman' CLI to be available in PATH.
+// If neither is available, cleanup will fail with a warning message suggesting manual cleanup.
+func forceCleanupContainer(t *testing.T, containerID string) {
+	t.Helper()
+
+	if containerID == "" {
+		return
+	}
+
+	// Try docker first, then podman
+	runtimes := []string{"docker", "podman"}
+
+	for _, runtime := range runtimes {
+		rmCmd := exec.Command(runtime, "rm", "-f", containerID)
+		if output, err := rmCmd.CombinedOutput(); err == nil {
+			t.Logf("Force-removed container %s using %s", containerID, runtime)
+			return
+		} else {
+			// Log the error; some "not found" noise is acceptable for cleanup
+			t.Logf("Failed to force-remove with %s: %v (output: %s)", runtime, err, string(output))
+		}
+	}
+
+	t.Logf("WARNING: Could not force-remove container %s. It may already be removed or manual cleanup required.", containerID)
+	t.Logf("Run: docker rm -f %s  OR  podman rm -f %s", containerID, containerID)
+}
+
+// CleanupLeakedContainers removes any containers matching the given image pattern.
+// This can be called to clean up containers from previous failed test runs.
+//
+// Note: This function requires either 'docker' or 'podman' CLI to be available in PATH.
+// If neither is available, cleanup will silently skip (no containers found with either runtime).
+func CleanupLeakedContainers(t *testing.T, imagePattern string) {
+	t.Helper()
+
+	runtimes := []string{"docker", "podman"}
+
+	for _, runtime := range runtimes {
+		// List containers matching the image
+		listCmd := exec.Command(runtime, "ps", "-a", "-q", "--filter", fmt.Sprintf("ancestor=%s", imagePattern))
+		output, err := listCmd.Output()
+		if err != nil {
+			continue // Try next runtime
+		}
+
+		containers := strings.TrimSpace(string(output))
+		if containers == "" {
+			continue
+		}
+
+		// Remove found containers
+		containerIDs := strings.Split(containers, "\n")
+		for _, id := range containerIDs {
+			if id == "" {
+				continue
+			}
+			rmCmd := exec.Command(runtime, "rm", "-f", id)
+			if rmErr := rmCmd.Run(); rmErr != nil {
+				t.Logf("Warning: Failed to remove container %s: %v", id, rmErr)
+			} else {
+				t.Logf("Cleaned up leaked container: %s", id)
+			}
+		}
+		return // Success with this runtime
+	}
 }
 
 // WaitStrategies provides common wait strategy builders

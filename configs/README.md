@@ -22,7 +22,7 @@ Edit `broker-configmap-pubsub-example.yaml`:
 ```yaml
 data:
   # Which subscription the adapter should consume from
-  SUBSCRIPTION_ID: "your-subscription-name"
+  BROKER_SUBSCRIPTION_ID: "your-subscription-name"
   
   # Broker configuration
   BROKER_GOOGLEPUBSUB_PROJECT_ID: "your-gcp-project"
@@ -59,12 +59,12 @@ The hyperfleet-broker library reads configuration from environment variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `SUBSCRIPTION_ID` | Subscription/queue to consume from | `my-subscription` |
+| `BROKER_SUBSCRIPTION_ID` | Subscription/queue to consume from | `my-subscription` |
 | `BROKER_TYPE` | Broker type | `googlepubsub` |
 | `BROKER_GOOGLEPUBSUB_PROJECT_ID` | GCP project ID | `my-project` |
 | `BROKER_GOOGLEPUBSUB_SUBSCRIPTION` | Pub/Sub subscription name | `my-subscription` |
 
-**Note**: `SUBSCRIPTION_ID` and `BROKER_GOOGLEPUBSUB_SUBSCRIPTION` should have the same value for Pub/Sub.
+**Note**: `BROKER_SUBSCRIPTION_ID` and `BROKER_GOOGLEPUBSUB_SUBSCRIPTION` should have the same value for Pub/Sub.
 
 #### Optional Variables
 

@@ -37,10 +37,18 @@ type TestEnvPrebuilt struct {
 }
 
 // Cleanup terminates the container and cleans up resources
-// Note: This is now a no-op as cleanup is handled by t.Cleanup() in testutil.StartContainer
 func (e *TestEnvPrebuilt) Cleanup(t *testing.T) {
 	t.Helper()
-	// No-op: cleanup is now handled by t.Cleanup() in testutil.StartContainer
+	if e.Container != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		// Use Terminate which is idempotent and safe to call multiple times
+		// (e.g. here AND in t.Cleanup)
+		if err := e.Container.Terminate(ctx); err != nil {
+			// Just log, don't fail, as it might already be stopped
+			t.Logf("Container cleanup: %v", err)
+		}
+	}
 }
 
 // SetupTestEnvPrebuilt sets up integration tests using a pre-built image with envtest.
@@ -124,6 +132,20 @@ Possible causes:
 2. Container runtime is slow or unresponsive
 3. Image does not exist (ensure 'make test-integration' was used)`, err, imageName)
 	}
+
+	// Register explicit cleanup for setup failure cases
+	// While StartContainer registers t.Cleanup, this ensures we catch setup failures immediately
+	// and fits the pattern of "cleanup before assertions"
+	setupSuccess := false
+	defer func() {
+		if !setupSuccess && result.Container != nil {
+			log.Infof("Setup failed, force terminating container...")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_ = result.Container.Terminate(ctx)
+		}
+	}()
+
 	require.NotNil(t, result.Container, "Container is nil")
 
 	log.Infof("Container started successfully")
@@ -160,6 +182,8 @@ Possible causes:
 	log.Infof("Creating default namespace...")
 	createDefaultNamespace(t, client, ctx)
 	log.Infof("Default namespace ready")
+
+	setupSuccess = true
 
 	return &TestEnvPrebuilt{
 		Container: result.Container,

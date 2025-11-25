@@ -159,9 +159,16 @@ func (c *Client) GetResource(ctx context.Context, gvk schema.GroupVersionKind, n
 	return obj, nil
 }
 
-// ListResources lists Kubernetes resources by GVK, namespace, and label selector
+// ListResources lists Kubernetes resources by GVK, namespace, and label selector.
+//
+// Parameters:
+//   - gvk: GroupVersionKind of the resources to list
+//   - namespace: namespace to list resources in (empty string for cluster-scoped or all namespaces)
+//   - labelSelector: label selector string (e.g., "app=myapp,env=prod") - empty to skip
+//
+// For more flexible discovery (including by-name lookup), use DiscoverResources() instead.
 func (c *Client) ListResources(ctx context.Context, gvk schema.GroupVersionKind, namespace string, labelSelector string) (*unstructured.UnstructuredList, error) {
-	c.log.Infof("Listing resources: %s (namespace: %s, selector: %s)", gvk.Kind, namespace, labelSelector)
+	c.log.Infof("Listing resources: %s (namespace: %s, labelSelector: %s)", gvk.Kind, namespace, labelSelector)
 
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
@@ -175,16 +182,16 @@ func (c *Client) ListResources(ctx context.Context, gvk schema.GroupVersionKind,
 		if err != nil {
 			return nil, errors.KubernetesError("invalid label selector %s: %v", labelSelector, err)
 		}
-		labelMap, err := metav1.LabelSelectorAsSelector(selector)
-	if err != nil {
+		labelSelector, err := metav1.LabelSelectorAsSelector(selector)
+		if err != nil {
 			return nil, errors.KubernetesError("failed to convert label selector: %v", err)
 		}
-		opts = append(opts, client.MatchingLabelsSelector{Selector: labelMap})
+		opts = append(opts, client.MatchingLabelsSelector{Selector: labelSelector})
 	}
 
 	err := c.client.List(ctx, list, opts...)
 	if err != nil {
-		return nil, errors.KubernetesError("failed to list resources %s (namespace: %s, selector: %s): %v", gvk.Kind, namespace, labelSelector, err)
+		return nil, errors.KubernetesError("failed to list resources %s (namespace: %s, labelSelector: %s): %v", gvk.Kind, namespace, labelSelector, err)
 	}
 
 	c.log.Infof("Successfully listed resources: %s (found %d items)", gvk.Kind, len(list.Items))

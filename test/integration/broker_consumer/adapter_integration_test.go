@@ -92,7 +92,7 @@ func TestAdapterSmokeTest(t *testing.T) {
 	_, cleanupEnv := setupTestEnvironment(t, projectID, emulatorHost, "adapter-smoke-test")
 	defer cleanupEnv()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// Create subscriber through adapter
@@ -121,18 +121,39 @@ func TestAdapterSmokeTest(t *testing.T) {
 	err = broker_consumer.Subscribe(ctx, subscriber, topic, handler)
 	require.NoError(t, err, "Adapter should successfully subscribe")
 
-	// Give subscriber time to fully initialize (create topic/subscription in emulator)
-	time.Sleep(500 * time.Millisecond)
+	// Publish messages with retry until one is received or timeout
+	// This handles the race condition where the subscriber may not be fully ready
+	// immediately after Subscribe() returns
+	if !publishAndWaitForMessage(t, ctx, topic, messageReceived) {
+		t.Fatal("Timed out waiting for message - adapter should successfully receive message through broker")
+	}
+}
 
-	// Publish a test message
+// publishAndWaitForMessage publishes messages periodically until one is received
+// or the context times out. This avoids hardcoded sleep times by actively polling.
+// Returns true if message was received, false on timeout.
+func publishAndWaitForMessage(t *testing.T, ctx context.Context, topic string, messageReceived <-chan struct{}) bool {
+	t.Helper()
+
+	// Publish interval - how often to retry publishing
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	// Publish first message immediately
 	publishTestMessages(t, topic, 1)
 
-	// Wait for message to be received or timeout
-	select {
-	case <-messageReceived:
-		t.Log("Message received successfully")
-	case <-ctx.Done():
-		t.Fatal("Timed out waiting for message - adapter should successfully receive message through broker")
+	for {
+		select {
+		case <-messageReceived:
+			t.Log("Message received successfully")
+			return true
+		case <-ticker.C:
+			// Subscriber might not be ready yet, publish another message
+			t.Log("Retrying message publish...")
+			publishTestMessages(t, topic, 1)
+		case <-ctx.Done():
+			return false
+		}
 	}
 }
 

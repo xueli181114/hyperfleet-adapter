@@ -35,6 +35,7 @@ This package uses `sigs.k8s.io/controller-runtime/pkg/client` instead of raw `cl
 │  • CreateResource()                             │
 │  • GetResource()                                │
 │  • ListResources()                              │
+│  • DiscoverResources()  ← Discovery interface   │
 │  • UpdateResource()                             │
 │  • DeleteResource()                             │
 │  • PatchResource()                              │
@@ -56,6 +57,20 @@ resource, err := client.GetResource(ctx, gvk, namespace, name)
 
 // List resources by label selector
 list, err := client.ListResources(ctx, gvk, namespace, "app=myapp")
+
+// Discover resources using Discovery interface
+discovery := &k8s_client.DiscoveryConfig{
+    Namespace:     "default",
+    LabelSelector: "app=myapp",
+}
+list, err := client.DiscoverResources(ctx, gvk, discovery)
+
+// Discover single resource by name
+discovery := &k8s_client.DiscoveryConfig{
+    Namespace: "default",
+    ByName:    "my-resource",
+}
+list, err := client.DiscoverResources(ctx, gvk, discovery)
 
 // Update a resource (full replacement)
 updated, err := client.UpdateResource(ctx, obj)
@@ -166,15 +181,48 @@ if found {
 }
 ```
 
-### List Resources by Label
+### Discover Resources
+
+The `DiscoverResources` method provides flexible resource discovery:
 
 ```go
 gvk, _ := GVKFromKindAndApiVersion("Pod", "v1")
-list, err := client.ListResources(ctx, gvk, "default", "app=myapp,env=prod")
 
-        if err != nil {
+// List by label selector
+discovery := &k8s_client.DiscoveryConfig{
+    Namespace:     "default",
+    LabelSelector: "app=myapp,env=prod",
+}
+list, err := client.DiscoverResources(ctx, gvk, discovery)
+if err != nil {
     return err
-        }
+}
+
+for _, pod := range list.Items {
+    log.Infof("Found pod: %s", pod.GetName())
+}
+
+// Get single resource by name
+discovery := &k8s_client.DiscoveryConfig{
+    Namespace: "default",
+    ByName:    "my-pod",
+}
+list, err := client.DiscoverResources(ctx, gvk, discovery)
+// list.Items will contain exactly one item
+```
+
+### List Resources (Low-Level)
+
+For simple listing without the Discovery interface:
+
+```go
+gvk, _ := GVKFromKindAndApiVersion("Pod", "v1")
+
+// List by label selector
+list, err := client.ListResources(ctx, gvk, "default", "app=myapp,env=prod")
+if err != nil {
+    return err
+}
 
 for _, pod := range list.Items {
     log.Infof("Found pod: %s", pod.GetName())

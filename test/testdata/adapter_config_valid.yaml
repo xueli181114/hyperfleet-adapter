@@ -1,511 +1,202 @@
-# HyperFleet Adapter Framework Configuration Template
-#
-# This is a Configuration Template for configuring cloud provider adapters
-# using the HyperFleet Adapter Framework.
-#
-# Copy this file to your adapter repository and customize for your needs.
+# Simple valid HyperFleet Adapter Configuration for testing
 
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterConfig
 metadata:
-  # Adapter name (used as resource name and in logs/metrics)
   name: example-adapter
   namespace: hyperfleet-system
   labels:
     hyperfleet.io/adapter-type: example
     hyperfleet.io/component: adapter
 
-# ============================================================================
-# Adapter Specification
-# ============================================================================
 spec:
-  # Adapter Information
   adapter:
-    # Adapter version
     version: "0.0.1"
   
-  # ============================================================================
-  # Rule Engine Configuration (using expr-lang/expr)
-  # ============================================================================
-  # https://github.com/expr-lang/expr
-  # Used by Google, Uber, Alibaba, OpenTelemetry, Argo for dynamic configuration
-  ruleEngine:
-    # Expression language type
-    type: "expr"
-    
-    # Compile expressions at startup for better performance and early error detection
-    compileOnStartup: true
-    
-    # Enable strict type checking (recommended)
-    strictTypes: true
-  # ============================================================================
-  # HyperFleet API Configuration
-  # ============================================================================
   hyperfleetApi:
-    # HTTP client timeout for API calls
     timeout: 2s
+    retryAttempts: 3
+    retryBackoff: exponential
 
-  # ============================================================================
-  # Message Broker Configuration (for CloudEvents)
-  # ============================================================================
-  # Adapter is broker-agnostic. All broker-specific configuration (type, connection
-  # details, credentials, subscription name) is managed via environment variables.
-  # 
-  # Required environment variables (set by deployment):
-  #   - BROKER_TYPE: Broker type (from broker ConfigMap)
-  #   - BROKER_PROJECT_ID / BROKER_QUEUE_URL / BROKER_HOST: Connection details (from broker ConfigMap)
-  #   - SUBSCRIPTION_NAME: Queue/subscription to consume from (from deployment)
-  #
-  # Framework reads these from environment at startup - no config needed here!
-  messageBroker:
-    # Optional: Override common settings
-    # If not specified, uses values from broker ConfigMap
-    maxConcurrency: 100
-
-  # ============================================================================
-  # Kubernetes Configuration
-  # ============================================================================
   kubernetes:
-    # Use in-cluster Kubernetes configuration (service account)
-    # Set to false to use local kubeconfig for development
-    inCluster: true
     apiVersion: "v1"
-    
-    # Default namespace for created resources
-    namespace: "hyperfleet-system"
 
-  # ============================================================================
-  # Event Handlers Configuration
-  # ============================================================================
-  
-  # Parameters to extract from CloudEvent and share across templates
-  # These are available as template variables in all resources
-  parameters:
-    # Environment variables from deployment (used in templates)
+  # Parameters with all required variables
+  params:
     - name: "hyperfleetApiBaseUrl"
       source: "env.HYPERFLEET_API_BASE_URL"
+      type: "string"
       required: true
+
     - name: "hyperfleetApiVersion"
       source: "env.HYPERFLEET_API_VERSION"
+      type: "string"
+      default: "v1"
       required: true
+
     - name: "hyperfleetApiToken"
       source: "env.HYPERFLEET_API_TOKEN"
+      type: "string"
       required: true
-    
-    # Extract from CloudEvent data
+
+    - name: "clusterId"
+      source: "event.cluster_id"
+      type: "string"
+      required: true
+
     - name: "resourceId"
-      source: "event.resourceId"
+      source: "event.resource_id"
+      type: "string"
       required: true
-    - name: "resourceType"
-      source: "event.resourceType"
-      required: true
-    - name: "eventGenerationId"
-      source: "event.GenerationId"
-      required: true
-      
-  # Preconditions: API calls and expressions to determine when to create Kubernetes resources
-  # Use to fetch cluster details, validate, and check conditions before resource creation
-  # Multiple preconditions can be defined and they will be evaluated in order
-  # The adapter will only create resources if all preconditions are met
+
+  # Preconditions with valid operators and CEL expressions
   preconditions:
-    # GET cluster details from HyperFleet API
-    - type: "api_call"
-      method: "GET"
-      endpoint: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
-      
-      # Store response in a parameter for use in templates and conditions
+    - name: "clusterStatus"
+      apiCall:
+        method: "GET"
+        url: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retryAttempts: 3
+        retryBackoff: "exponential"
       storeResponseAs: "clusterDetails"
-      
-      # Extract specific fields from response for easier access
       extract:
+        - as: "clusterName"
+          field: "metadata.name"
+        - as: "clusterPhase"
+          field: "status.phase"
+        - as: "region"
+          field: "spec.region"
         - as: "cloudProvider"
           field: "spec.provider"
         - as: "vpcId"
-          field: "spec.vpcId"
-        - as: "nodePools"
-          field: "spec.nodePools"
-      
-      # Expr expression to evaluate precondition
-      # If this returns false, resources will not be created
-      when:
-        expression: |
-          clusterDetails.status.adapters[?(@.name=='example')].available != "True" &&
-          clusterDetails.status.phase in ["Provisioned", "Provisioning", "Ready"] &&
-          all(nodePools, {
-            .MinNodes >= 1 && 
-            .MaxNodes <= 100 && 
-            .MinNodes <= .MaxNodes
-          })
-        
-        # Optional: Description for logging/debugging
-        description: "Create resources only when adapter not available, cluster in valid phase, and node pools properly configured"
+          field: "spec.vpc_id"
+      # Structured conditions with valid operators
+      conditions:
+        - field: "clusterPhase"
+          operator: "in"
+          value: ["Provisioning", "Installing", "Ready"]
+        - field: "cloudProvider"
+          operator: "in"
+          value: ["aws", "gcp", "azure"]
+        - field: "vpcId"
+          operator: "exists"
+          value: true
 
-  # Kubernetes resources to create
+    - name: "validationCheck"
+      # Valid CEL expression
+      expression: |
+        clusterPhase == "Ready" || clusterPhase == "Provisioning"
+
+  # Resources with valid K8s manifests
   resources:
-    - apiVersion: "v1"
-      kind: "Namespace"
-      metadata:
-        name: "{{ .clusterId }}"
-        labels:
-          hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          hyperfleet.io/cluster-name: "{{ .clusterName }}"
-          hyperfleet.io/region: "{{ .region }}"
-          hyperfleet.io/provider: "{{ .cloudProvider }}"
-          hyperfleet.io/managed-by: "{{ .metadata.name }}"
-          hyperfleet.io/resource-type: "namespace"  # For resource tracking by discovery
-        annotations:
-          hyperfleet.io/vpc-id: "{{ .vpcId }}"
-          hyperfleet.io/created-by: "hyperfleet-adapter"
-          hyperfleet.io/event-id: "{{ .event.id }}"
-          hyperfleet.io/event-source: "{{ .event.source }}"
-      spec:
-        finalizers:
-          - "hyperfleet.io/cluster-finalizer"
-      # Track settings for coming events to check resource status
-      track:
-        as: "clusterNamespace" # alias of the resource for the post-processing
-        # just define k8s resources' discovery rules to discover the resource
-        discovery: # discovery rules to discover the resource if name is not known or fixed
-          namespace: ""  # Empty for cluster-scoped resources (Namespace, ClusterRole, etc.)
-          bySelectors:
-            labelSelector:
-              hyperfleet.io/cluster-id: "{{ .clusterId }}"
-              hyperfleet.io/resource-type: "namespace"
-              hyperfleet.io/managed-by: "{{ .metadata.name }}"
+    - name: "clusterNamespace"
+      manifest:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: "cluster-{{ .clusterId }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/cluster-name: "{{ .clusterName }}"
+            hyperfleet.io/region: "{{ .region }}"
+            hyperfleet.io/provider: "{{ .cloudProvider }}"
+            hyperfleet.io/managed-by: "{{ .metadata.name }}"
+          annotations:
+            hyperfleet.io/vpc-id: "{{ .vpcId }}"
+      discovery:
+        namespace: "*"  # Cluster-scoped resource (Namespace)
+        bySelectors:
+          labelSelector:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "{{ .metadata.name }}"
 
-    - apiVersion: "apps/v1"
-      kind: "Deployment"
-      template: "templates/deployment.yaml"
-      track:
-        as: "clusterController" # alias of the resource for the post-processing
-        discovery:
-          namespace: "{{ .kubernetes.namespace }}"  # Can use templates! Parsed from config or event
-          bySelectors:
-            labelSelector:
-              hyperfleet.io/cluster-id: "{{ .clusterId }}"
-              hyperfleet.io/resource-type: "controller"
-              hyperfleet.io/managed-by: "{{ .metadata.name }}"
+    - name: "clusterConfigMap"
+      manifest:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "cluster-config-{{ .clusterId }}"
+          namespace: "cluster-{{ .clusterId }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+      discovery:
+        namespace: "cluster-{{ .clusterId }}"
+        byName: "cluster-config-{{ .clusterId }}"
 
-    - apiVersion: "v1"
-      kind: "Service"
-      template: "templates/service.yaml"
-      track:
-        as: "clusterService" # alias of the resource for the post-processing
-        discovery:
-          namespace: "{{ .kubernetes.namespace }}"  # Can use templates! Parsed from config or event
-          # Option 1: Discover by name
-          byName: "cluster-provisioner-{{ .clusterId }}" # resource name to discover the resource if name is known
-          # Option 2: Discover by selectors
-          bySelectors:
-            labelSelector: # labels to discover the resource if name is not known or fixed
-              hyperfleet.io/cluster-id: "{{ .clusterId }}"
-              hyperfleet.io/resource-type: "service"
-              hyperfleet.io/managed-by: "{{ .metadata.name }}"
+    - name: "externalTemplate"
+      manifest:
+        ref: "templates/deployment.yaml"
+      discovery:
+        namespace: "cluster-{{ .clusterId }}"
+        bySelectors:
+          labelSelector:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
 
-  # post: both conditions and data to the enpoint defined. data is optional, if not defined, the adapter will not report data to hyperfleet_api
-  # Define conditions to report based on tracked resource status fields
-  # multiple post conditions can be defined and they will be reported in the order they are defined 
-# ... (inside spec:) ...
-
-  # ============================================================================
-  # Post-Processing Configuration (Using Expr)
-  # ============================================================================
-  #
-  # The post block is divided into three stages:
-  # 1. Fetch external resources (optional): Use fetchExternalResource to load K8s resources
-  # 2. Build status payload: Evaluate tracked resources and build status object
-  # 3. Execute actions: POST to API, log, etc. based on conditions
-  #
+  # Post-processing with valid CEL expressions
   post:
-    parameters:
-      - name: "clusterJob"
-        fetchExternalResource:
-          kind: "Job"  # GVK determination (required at top level)
-          apiVersion: "batch/v1"  # Optional, defaults based on kind
-          discovery:
-            namespace: "hyperfleet-jobs"  # Can use templates: "cluster-{{ .clusterId }}-ns"
-            bySelectors:
-              labelSelector:
-                hyperfleet.io/cluster-id: "{{ .clusterId }}"
-                hyperfleet.io/resource-type: "job"
-          required: false  # If not found, variable will be nil
-
-      - name: "provisioningSecret"
-        fetchExternalResource:
-          kind: "Secret"  # GVK determination (required at top level)
-          apiVersion: "v1"  # Optional, defaults to v1 for core resources
-          discovery:
-            namespace: "hyperfleet-secrets"  # Can use templates
-            byName:
-              name: "provisioning-secret-{{ .clusterId }}"
-          required: false
-
-      # --------------------------------------------------------------------------
-      # Stage 2: State Evaluation & Payload Building
-      # --------------------------------------------------------------------------
-      # Build the status payload using:
-      #   - resources.* (tracked resources created by adapter)
-      #   - clusterJob, provisioningSecret (fetched above)
-      #   - event fields (clusterId, resourceId, etc.)
-      #   - parameters.* (defined in parameters section)
-
+    params:
       - name: "clusterStatusPayload"
-        # "build:" key tells the framework to construct a complex object
-        # instead of extracting a single value (like "source:").
         build:
-          # "conditions" block defines the standard conditions to report to the HyperFleet API
           conditions:
-            # --- Applied Condition ---
-            # Resources have been successfully applied to Kubernetes
             applied:
-              # Expr expression for status evaluation
               status:
                 expression: |
-                  resources.clusterNamespace.status.phase == "Active" &&
-                  resources.clusterController.status.conditions[?(@.type=='Available')].status == "True" &&
-                  resources.clusterService.status.conditions[?(@.type=='Ready')].status == "True"
-              
-              # Expr expression for reason (with null coalescence)
+                  resources.clusterNamespace.status.phase == "Active"
               reason:
                 expression: |
-                  resources.clusterController.status.conditions[?(@.type=='Available')].reason ?? "ResourcesCreated"
-              
-              # Expr expression for message (with null coalescence)
+                  has(resources.clusterNamespace.status.phase) ? "ResourcesCreated" : "Pending"
               message:
                 expression: |
-                  resources.clusterController.status.conditions[?(@.type=='Available')].message ?? "All Kubernetes resources created successfully"
+                  "Namespace status: " + resources.clusterNamespace.status.phase
 
-            # --- Available Condition ---
-            # Deployment is ready and serving traffic
             available:
-              # Expr expression for availability check
               status:
                 expression: |
-                  resources.clusterController.status.readyReplicas > 0 &&
-                  resources.clusterController.status.replicas == resources.clusterController.status.readyReplicas &&
-                  resources.clusterService.status.loadBalancer.ingress != nil &&
-                  len(resources.clusterService.status.loadBalancer.ingress) > 0
-              
-              # Expr expression for reason
+                  resources.clusterConfigMap != null
               reason:
                 expression: |
-                  resources.clusterController.status.conditions[?(@.type=='Available')].reason ?? "DeploymentReady"
-              
-              # Expr expression for message
+                  "ConfigMapReady"
               message:
                 expression: |
-                  resources.clusterController.status.conditions[?(@.type=='Available')].message ?? "Deployment is available and serving traffic"
+                  "ConfigMap is available"
 
-            # --- Health Condition ---
-            # All health checks passed, no failures detected
             health:
-              # Expr expression for health check (with null-safe defaults)
               status:
                 expression: |
-                  (resources.clusterController.status.conditions[?(@.type=='ReplicaFailure')].status ?? "False") != "True" &&
-                  (resources.clusterController.status.unavailableReplicas ?? 0) < 1 &&
-                  resources.clusterNamespace.status.phase != "Terminating"
-              
-              # Expr expression for reason
+                  true
               reason:
                 expression: |
-                  resources.clusterController.status.conditions[?(@.type=='ReplicaFailure')].reason ?? "AllChecksPass"
-              
-              # Expr expression for message
+                  "Healthy"
               message:
                 expression: |
-                  resources.clusterController.status.conditions[?(@.type=='ReplicaFailure')].message ?? "All health checks passed"
-          
-          # "data" block defines additional custom data to report back to the HyperFleet API
-          # Now can reference fetched external resources by name
+                  "All health checks passed"
+
           data:
-            # Simple boolean check (tracked resource)
-            recordCreated:
+            clusterReady:
               expression: |
-                resources.exampleResource.status.value != nil
-              description: "Example resource must exist"
-            
-            # Check external resource - much cleaner!
-            # The 'clusterJob' variable was fetched above
-            anotherRecordCreated:
-              expression: |
-                clusterJob != nil && clusterJob.status.value != nil
-              description: "Job record must exist"
-            
-            # Reuse the same variable for another check
-            jobFailed:
-              expression: |
-                clusterJob != nil && clusterJob.status.failed > 0
-              description: "The cluster job must not have failed"
-            
-            # Check provisioning secret (fetched above)
-            provisioningSecretReady:
-              expression: |
-                provisioningSecret != nil && provisioningSecret.data["api-key"] != nil
-              description: "Provisioning secret must contain api-key"
-            
-            # Advanced: Check all node pools are ready
-            allNodePoolsReady:
-              expression: |
-                all(resources.nodePools, {
-                  .status.phase == "Ready" &&
-                  .status.readyNodes >= .spec.minNodes
-                })
-              description: "All node pools must be in Ready state with minimum nodes"
-            
-            # Advanced: Calculate total capacity
-            totalCapacity:
-              expression: |
-                {
-                  "cpu": sum(resources.nodePools, .status.capacity.cpu),
-                  "memory": sum(resources.nodePools, .status.capacity.memory),
-                  "nodes": len(resources.nodePools)
-                }
-              description: "Calculate aggregate cluster capacity"
-          
-          # Timestamp for status reporting (using Sprig)
+                resources.clusterNamespace.status.phase == "Active"
+              description: "Cluster namespace is active"
+
+          observed_generation:
+            value: "{{ .resourceId }}"
+            description: "Resource ID processed"
+
           lastUpdated:
             value: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-            description: "Timestamp when status was reported (RFC3339 format)"
+            description: "Timestamp of status update"
 
-    # --------------------------------------------------------------------------
-    # Stage 3: Action Execution
-    # --------------------------------------------------------------------------
-    # The postActions list uses all variables built in the "parameters" block above,
-    # including fetched external resources (clusterJob, provisioningSecret, etc.)
-    # Actions can be conditionally executed using expr expressions.
     postActions:
-      - type: "api_call"
-        method: "POST"
-        endpoint: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/status"
-        
-        # Optional: Conditionally execute this action based on expr expression
-        # Only POST when at least one condition changed to True
+      - name: "reportClusterStatus"
+        apiCall:
+          method: "POST"
+          url: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/status"
+          headers:
+            - name: "Authorization"
+              value: "Bearer {{ .hyperfleetApiToken }}"
+            - name: "Content-Type"
+              value: "application/json"
+          body: "{{ .clusterStatusPayload }}"
         when:
           expression: |
-            clusterStatusPayload.conditions.applied.status == "True" ||
-            clusterStatusPayload.conditions.available.status == "True" ||
-            clusterStatusPayload.conditions.health.status == "True"
-          description: "Only report status when at least one condition is True"
-        
-        # Headers for API call
-        headers:
-          - name: "Authorization"
-            value: "Bearer {{ .hyperfleetApiToken }}"
-          - name: "Content-Type"
-            value: "application/json"
-        
-        # Use the parameter built above as the request body
-        body: "{{ .clusterStatusPayload }}"
-
-  # ============================================================================
-  # Observability Configuration(temporary configuration for MVP, it will be enhanced when implement observability feature)
-  # ============================================================================
-  observability:
-    # Port for Prometheus metrics endpoint
-    metricsPort: 8080
-    
-    # Port for health check endpoints (/healthz, /readyz)
-    healthPort: 8081
-    
-    # Log level: debug, info, warn, error
-    logLevel: "info"
-    
-    # Enable OpenTelemetry distributed tracing
-    traceEnabled: true
-
-# ==============================================================================
-# EXPR RULE ENGINE GUIDE
-# ==============================================================================
-#
-# This configuration uses expr-lang/expr for conditional logic.
-# https://github.com/expr-lang/expr
-#
-# Benefits:
-# ✅ Industry-proven (used by Google, Uber, Alibaba, OpenTelemetry, Argo)
-# ✅ Type-safe with compile-time validation
-# ✅ High performance (bytecode VM)
-# ✅ Readable syntax (natural boolean expressions)
-# ✅ Powerful built-in functions for arrays/collections
-# ✅ Null-safe operators (??)
-#
-# ---------------------------------------------------------------------------
-# Common Expr Patterns
-# ---------------------------------------------------------------------------
-#
-# 1. Simple comparisons:
-#    status.phase == "Ready"
-#    replicas > 0
-#    name != "default"
-#
-# 2. Boolean logic:
-#    condition1 && condition2
-#    condition1 || condition2
-#    !condition
-#
-# 3. Array membership:
-#    status in ["Ready", "Running", "Active"]
-#    !(phase in ["Terminating", "Failed"])
-#
-# 4. Null coalescence (default values):
-#    unavailableReplicas ?? 0
-#    status.message ?? "No message available"
-#
-# 5. Array functions:
-#    all(nodePools, {.ready == true})
-#    any(replicas, {.status == "Failed"})
-#    filter(pods, {.status == "Running"})
-#    map(nodes, {.capacity.cpu})
-#
-# 6. Aggregation:
-#    sum(nodes, .capacity.cpu)
-#    len(readyReplicas)
-#
-# 7. Complex conditions:
-#    all(nodePools, {
-#      .status == "Ready" && 
-#      .readyNodes >= .minNodes &&
-#      .readyNodes <= .maxNodes
-#    })
-#
-# 8. Calculations:
-#    let total = sum(nodes, .capacity.cpu);
-#    let requested = sum(pods, .requests.cpu);
-#    (requested / total) * 100 < 80
-#
-# 9. Nested field access:
-#    resources.deployment.status.conditions[?(@.type=='Available')].status == "True"
-#
-# 10. Object construction:
-#     {
-#       "totalCPU": sum(nodes, .capacity.cpu),
-#       "totalMemory": sum(nodes, .capacity.memory),
-#       "nodeCount": len(nodes)
-#     }
-#
-# ---------------------------------------------------------------------------
-# Available Variables in Expressions
-# ---------------------------------------------------------------------------
-#
-# preconditions.when:
-#   - All extracted parameters (cloudProvider, vpcId, nodePools, etc.)
-#   - clusterDetails (API response stored via storeResponseAs)
-#
-# post.parameters (with fetchExternalResource):
-#   - Variables are evaluated in order
-#   - Each fetchExternalResource creates a named variable (e.g., clusterJob, provisioningSecret)
-#   - These variables are available in subsequent parameters
-#
-# post.parameters.build.conditions.*.status/reason/message:
-#   - resources.* (all tracked Kubernetes resources)
-#   - resources.clusterNamespace, resources.clusterController, etc.
-#   - All fetched external resources (clusterJob, provisioningSecret, etc.)
-#
-# post.parameters.build.data.*:
-#   - resources.* (all tracked Kubernetes resources)
-#   - All fetched external resources (clusterJob, provisioningSecret, etc.)
-#
-# postActions.when:
-#   - All parameters from post.parameters (clusterStatusPayload, clusterJob, provisioningSecret, etc.)
-#
-# ---------------------------------------------------------------------------
+            clusterStatusPayload != null
+          description: "Report when status payload is built"

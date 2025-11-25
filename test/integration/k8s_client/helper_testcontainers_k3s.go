@@ -93,6 +93,18 @@ func SetupTestEnvTestcontainers(t *testing.T) *TestEnvTestcontainers {
 
 	// Create K3s container with proxy configuration and HTTP wait strategy
 	k3sContainer, err := k3s.Run(ctx, "rancher/k3s:v1.27.1-k3s1", opts...)
+	
+	// Register cleanup immediately after creation to prevent leaks if assertions fail
+	if k3sContainer != nil {
+		t.Cleanup(func() {
+			if k3sContainer != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				_ = k3sContainer.Terminate(ctx)
+			}
+		})
+	}
+
 	require.NoError(t, err, "Failed to start K3s container")
 	require.NotNil(t, k3sContainer, "K3s container is nil")
 

@@ -120,6 +120,13 @@ spec:
       description: "Reference URL for the resource"
       required: true
 
+    - name: "imageTag"
+      source: "env.IMAGE_TAG"
+      type: "string"
+      default: "v1.0.0"
+      description: "Tag for container images"
+      required: false
+
   # ============================================================================
   # Global Preconditions
   # ============================================================================
@@ -378,9 +385,4 @@ spec:
         apiCall:
           method: "POST"
           url: "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/status"
-          headers:
-            - name: "Authorization"
-            value: "Bearer {{ .hyperfleetApiToken }}"
-            - name: "Content-Type"
-            value: "application/json"
           body: "{{ .clusterStatusPayload }}"

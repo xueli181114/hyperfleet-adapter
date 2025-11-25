@@ -38,7 +38,9 @@ func publishTestMessages(t *testing.T, topic string, count int) {
 			// Ignore "AlreadyExists" errors - topic may have been created by subscriber
 			if isTopicAlreadyExistsError(err) {
 				t.Logf("Topic already exists (expected): %v", err)
-				// Continue publishing - the topic exists, so publish should work
+				// Retry publish now that we know the topic exists
+				err = publisher.Publish(topic, evt)
+				require.NoError(t, err, "Failed to publish message %d after topic creation", i)
 			} else {
 				require.NoError(t, err, "Failed to publish message %d", i)
 			}

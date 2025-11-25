@@ -45,6 +45,9 @@ func GVKFromKindAndApiVersion(kind, apiVersion string) (schema.GroupVersionKind,
 //   gvk := GVKFromUnstructured(obj)
 //   created, err := client.CreateResource(ctx, obj)
 func GVKFromUnstructured(obj *unstructured.Unstructured) schema.GroupVersionKind {
+	if obj == nil {
+		return schema.GroupVersionKind{}
+	}
 	return obj.GroupVersionKind()
 }
 

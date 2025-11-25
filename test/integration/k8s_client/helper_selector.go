@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 )
 
@@ -82,7 +83,7 @@ func createDefaultNamespace(t *testing.T, client *k8s_client.Client, ctx context
 			},
 		},
 	}
-	ns.SetGroupVersionKind(k8s_client.CommonResourceKinds.Namespace)
+	ns.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"})
 
 	_, err := client.CreateResource(ctx, ns)
 	// Ignore error if namespace already exists

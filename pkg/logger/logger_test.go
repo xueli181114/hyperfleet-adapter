@@ -260,7 +260,7 @@ func TestLoggerChaining(t *testing.T) {
 
 		log.Extra("key1", "value1").Extra("key2", "value2").Info("Test multiple extras")
 	})
-		}
+}
 
 func TestLoggerConstants(t *testing.T) {
 	tests := []struct {
