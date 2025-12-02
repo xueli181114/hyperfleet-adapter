@@ -118,17 +118,6 @@ func (v *Validator) validateConditionOperators() {
 		}
 	}
 
-	// Validate post action when conditions
-	if v.config.Spec.Post != nil {
-		for i, action := range v.config.Spec.Post.PostActions {
-			if action.When != nil {
-				for j, cond := range action.When.Conditions {
-					path := fmt.Sprintf("%s.%s.%s[%d].%s.%s[%d]", FieldSpec, FieldPost, FieldPostActions, i, FieldWhen, FieldConditions, j)
-					v.validateOperator(cond.Operator, path)
-				}
-			}
-		}
-	}
 }
 
 // validateOperator checks if an operator is valid
@@ -349,17 +338,9 @@ func (v *Validator) validateCELExpressions() {
 		}
 	}
 
-	// Validate post action when expressions
+	// Validate post params build expressions (build is now interface{})
+	// We recursively find and validate any "expression" fields in the build structure
 	if v.config.Spec.Post != nil {
-		for i, action := range v.config.Spec.Post.PostActions {
-			if action.When != nil && action.When.Expression != "" {
-				path := fmt.Sprintf("%s.%s.%s[%d].%s.%s", FieldSpec, FieldPost, FieldPostActions, i, FieldWhen, FieldExpression)
-				v.validateCELExpression(action.When.Expression, path)
-			}
-		}
-
-		// Validate post params build expressions (build is now interface{})
-		// We recursively find and validate any "expression" fields in the build structure
 		for i, param := range v.config.Spec.Post.Params {
 			if param.Build != nil {
 				if buildMap, ok := param.Build.(map[string]interface{}); ok {

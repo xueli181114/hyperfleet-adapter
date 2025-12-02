@@ -10,10 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/broker_consumer"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/config_loader"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/executor"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/hyperfleet_api"
+	"github.com/openshift-hyperfleet/hyperfleet-adapter/internal/k8s_client"
 	"github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/logger"
 )
 
@@ -137,32 +138,42 @@ func run() error {
 		}
 	}()
 
-	// Define event handler using the loaded adapter configuration and API client.
+	// Create Kubernetes client (optional - may fail if not running in cluster)
+	var k8sClient *k8s_client.Client
+	k8sConfig := k8s_client.ClientConfig{
+		KubeConfigPath: os.Getenv("KUBECONFIG"),
+		QPS:            100.0,
+		Burst:          200,
+	}
+	k8sClient, err = k8s_client.NewClient(ctx, k8sConfig, log)
+	if err != nil {
+		// K8s client is optional - log warning and continue
+		// Resources phase will be skipped if client is nil
+		log.Warning(fmt.Sprintf("Kubernetes client not available: %v (resource operations will be disabled)", err))
+	} else {
+		log.Info("Kubernetes client created successfully")
+	}
+
+	// Create executor
+	log.Info("Creating event executor...")
+	eventExecutor, err := executor.NewBuilder().
+		WithAdapterConfig(adapterConfig).
+		WithAPIClient(apiClient).
+		WithK8sClient(k8sClient).
+		WithLogger(log).
+		WithDryRun(os.Getenv("DRY_RUN") == "true").
+		Build()
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to create executor: %v", err))
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+	log.Info("Event executor created successfully")
+
+	// Create event handler using the executor
 	// Each message invocation receives its own context (ctx) from the broker.
 	// This ensures message isolation - cancellation or timeout of one message
 	// does not affect other messages.
-	handler := func(ctx context.Context, evt *event.Event) error {
-		log.Infof("Received event: id=%s type=%s source=%s data=%s", evt.ID(), evt.Type(), evt.Source(), string(evt.Data()))
-
-		// TODO: Process event using adapterConfig and apiClient
-		// Each API call MUST use ctx (the message context) for proper isolation:
-		//   resp, err := apiClient.Get(ctx, url)  // ctx ensures per-message timeout/cancellation
-		//
-		// 1. Extract params from event data using adapterConfig.Spec.Params
-		// 2. Execute preconditions using adapterConfig.Spec.Preconditions
-		//    - Make API calls using apiClient.Get(ctx, ...)/Post(ctx, ...)/etc.
-		//    - Extract response fields and evaluate conditions
-		// 3. Create/update Kubernetes resources using adapterConfig.Spec.Resources
-		// 4. Execute post actions using adapterConfig.Spec.Post.PostActions
-		//    - Report status back to HyperFleet API using apiClient
-
-		// Reference config and client to avoid unused variable warnings
-		_ = adapterConfig
-		_ = apiClient
-
-		log.Info("Event processed successfully")
-		return nil
-	}
+	handler := eventExecutor.CreateHandler()
 
 	// Subscribe and block until context is cancelled
 	// Let the broker consumer determine the topic to subscribe to from BROKER_TOPIC environment variable

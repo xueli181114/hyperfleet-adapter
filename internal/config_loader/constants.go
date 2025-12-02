@@ -41,6 +41,7 @@ const (
 // Precondition field names
 const (
 	FieldAPICall         = "apiCall"
+	FieldLog             = "log"
 	FieldStoreResponseAs = "storeResponseAs"
 	FieldExtract         = "extract"
 	FieldConditions      = "conditions"
@@ -98,11 +99,6 @@ const (
 // Post config field names
 const (
 	FieldPostActions = "postActions"
-)
-
-// Post action field names
-const (
-	FieldWhen = "when"
 )
 
 // Extract field names

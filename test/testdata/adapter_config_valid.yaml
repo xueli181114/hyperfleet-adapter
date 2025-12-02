@@ -196,7 +196,3 @@ spec:
             - name: "Content-Type"
               value: "application/json"
           body: "{{ .clusterStatusPayload }}"
-        when:
-          expression: |
-            clusterStatusPayload != null
-          description: "Report when status payload is built"

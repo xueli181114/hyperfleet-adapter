@@ -128,8 +128,8 @@ func (v *SchemaValidator) validatePreconditions() error {
 		}
 
 		if !v.hasPreconditionLogic(precond) {
-			return fmt.Errorf("%s (%s): must specify %s, %s, or %s",
-				path, precond.Name, FieldAPICall, FieldExpression, FieldConditions)
+			return fmt.Errorf("%s (%s): must specify %s, %s, %s, or %s",
+				path, precond.Name, FieldAPICall, FieldLog, FieldExpression, FieldConditions)
 		}
 
 		if precond.APICall != nil {
@@ -449,6 +449,7 @@ func (v *SchemaValidator) hasParamSource(param Parameter) bool {
 
 func (v *SchemaValidator) hasPreconditionLogic(precond Precondition) bool {
 	return precond.APICall != nil ||
+		precond.Log != nil ||
 		precond.Expression != "" ||
 		len(precond.Conditions) > 0
 }

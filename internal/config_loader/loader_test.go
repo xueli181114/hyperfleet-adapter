@@ -330,7 +330,7 @@ spec:
     - name: "checkCluster"
 `,
 			wantError: true,
-			errorMsg:  "must specify apiCall, expression, or conditions",
+			errorMsg:  "must specify apiCall, log, expression, or conditions",
 		},
 		{
 			name: "API call without method",

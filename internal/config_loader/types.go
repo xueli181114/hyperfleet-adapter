@@ -74,10 +74,19 @@ type FetchExternalResource struct {
 type Precondition struct {
 	Name              string          `yaml:"name"`
 	APICall           *APICall        `yaml:"apiCall,omitempty"`
+	Log               *LogAction      `yaml:"log,omitempty"`
 	StoreResponseAs   string          `yaml:"storeResponseAs,omitempty"`
 	Extract           []ExtractField  `yaml:"extract,omitempty"`
 	Conditions        []Condition     `yaml:"conditions,omitempty"`
 	Expression        string          `yaml:"expression,omitempty"`
+}
+
+// LogAction represents a configurable log action
+type LogAction struct {
+	// Message is a Go template string that will be rendered with the current context
+	Message string `yaml:"message"`
+	// Level is the log level: "debug", "info", "warning", "error" (default: "info")
+	Level string `yaml:"level,omitempty"`
 }
 
 // APICall represents an API call configuration
@@ -168,16 +177,9 @@ type PostConfig struct {
 
 // PostAction represents a post-processing action
 type PostAction struct {
-	Name    string    `yaml:"name"`
-	APICall *APICall  `yaml:"apiCall,omitempty"`
-	When    *WhenExpr `yaml:"when,omitempty"`
-}
-
-// WhenExpr represents a conditional expression
-type WhenExpr struct {
-	Expression  string      `yaml:"expression,omitempty"`
-	Conditions  []Condition `yaml:"conditions,omitempty"`
-	Description string      `yaml:"description,omitempty"`
+	Name    string     `yaml:"name"`
+	APICall *APICall   `yaml:"apiCall,omitempty"`
+	Log     *LogAction `yaml:"log,omitempty"`
 }
 
 // ManifestRef represents a manifest reference

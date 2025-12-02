@@ -9,21 +9,7 @@
 # 2. field: "path" - Simple JSON path extraction (translated to CEL internally)
 # 3. expression: "cel" - Full CEL expressions for complex logic
 #
-# CONDITION SYNTAX (when:):
-# =========================
-# Option 1: Expression syntax (CEL)
-#   when:
-#     expression: |
-#       clusterPhase == "Terminating"
-#
-# Option 2: Structured conditions (field + operator + value)
-#   when:
-#     conditions:
-#       - field: "clusterPhase"
-#         operator: "equals"
-#         value: "Terminating"
-#
-# Supported operators: equals, notEquals, in, notIn, contains, greaterThan, lessThan
+# Supported operators in conditions: equals, notEquals, in, notIn, contains, greaterThan, lessThan, exists
 #
 # Copy this file to your adapter repository and customize for your needs.
 

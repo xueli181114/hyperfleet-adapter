@@ -11,6 +11,8 @@ import (
 type Logger interface {
 	V(level int32) Logger
 	Infof(format string, args ...interface{})
+	Warningf(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
 	Extra(key string, value interface{}) Logger
 	Info(message string)
 	Warning(message string)
@@ -108,6 +110,18 @@ func (l *logger) V(level int32) Logger {
 func (l *logger) Infof(format string, args ...interface{}) {
 	prefixed := l.prepareLogPrefixf(format, args...)
 	glog.V(glog.Level(l.level)).Infof("%s", prefixed)
+}
+
+// Warningf logs a formatted warning message
+func (l *logger) Warningf(format string, args ...interface{}) {
+	prefixed := l.prepareLogPrefixf(format, args...)
+	glog.Warningf("%s", prefixed)
+}
+
+// Errorf logs a formatted error message
+func (l *logger) Errorf(format string, args ...interface{}) {
+	prefixed := l.prepareLogPrefixf(format, args...)
+	glog.Errorf("%s", prefixed)
 }
 
 func (l *logger) Extra(key string, value interface{}) Logger {
