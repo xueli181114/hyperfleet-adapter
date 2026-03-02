@@ -487,9 +487,12 @@ func runServe() error {
 		return err
 	}
 
+	// Create broker metrics recorder
+	brokerMetrics := broker.NewMetricsRecorder(config.Metadata.Name, version.Version, nil)
+
 	// Create broker subscriber and subscribe
 	log.Info(ctx, "Creating broker subscriber...")
-	subscriber, err := broker.NewSubscriber(log, subscriptionID)
+	subscriber, err := broker.NewSubscriber(log, subscriptionID, brokerMetrics)
 	if err != nil {
 		errCtx := logger.WithErrorField(ctx, err)
 		log.Errorf(errCtx, "Failed to create subscriber")

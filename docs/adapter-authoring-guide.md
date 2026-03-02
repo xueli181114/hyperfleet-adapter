@@ -1169,6 +1169,16 @@ spec:
 
 More information about deployment can be found in [Architecture repository - HyperFleet Adapter Framework - Deployment Guide](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-deployment.md)
 
+5. **Verify broker metrics** — the adapter automatically exposes broker metrics on the `/metrics` endpoint (port 9090). No additional configuration is needed. The following metrics are available:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `hyperfleet_broker_messages_consumed_total` | Counter | Total messages consumed from the broker |
+| `hyperfleet_broker_errors_total` | Counter | Total message processing errors |
+| `hyperfleet_broker_message_duration_seconds` | Histogram | Message processing duration |
+
+All broker metrics include `topic`, `component`, and `version` labels. The `component` label is set from the adapter's `metadata.name` in the AdapterConfig.
+
 ---
 
 ## Appendix A: CEL Quick Reference
