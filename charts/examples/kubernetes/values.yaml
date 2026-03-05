@@ -1,27 +1,27 @@
 adapterConfig:
   create: true
   files:
-    adapter-config.yaml: examples/adapter-config.yaml
+    adapter-config.yaml: examples/kubernetes/adapter-config.yaml
   log:
     level: debug
 
 adapterTaskConfig:
   create: true
   files:
-    task-config.yaml: examples/adapter-task-config.yaml
-    job.yaml: examples/adapter-task-resource-job.yaml
-    job-serviceaccount.yaml: examples/adapter-task-resource-job-serviceaccount.yaml
-    job-role.yaml: examples/adapter-task-resource-job-role.yaml
-    job-rolebinding.yaml: examples/adapter-task-resource-job-rolebinding.yaml
-    deployment.yaml: examples/adapter-task-resource-deployment.yaml
+    task-config.yaml: examples/kubernetes/adapter-task-config.yaml
+    job.yaml: examples/kubernetes/adapter-task-resource-job.yaml
+    job-serviceaccount.yaml: examples/kubernetes/adapter-task-resource-job-serviceaccount.yaml
+    job-role.yaml: examples/kubernetes/adapter-task-resource-job-role.yaml
+    job-rolebinding.yaml: examples/kubernetes/adapter-task-resource-job-rolebinding.yaml
+    deployment.yaml: examples/kubernetes/adapter-task-resource-deployment.yaml
 
 broker:
   create: true
   googlepubsub:
-    projectId: CHANGE_ME
-    subscriptionId: CHANGE_ME
+    project_id: CHANGE_ME
+    subscription_id: CHANGE_ME
     topic: CHANGE_ME
-    deadLetterTopic: CHANGE_ME
+    dead_letter_topic: CHANGE_ME
 
 image:
   registry: CHANGE_ME

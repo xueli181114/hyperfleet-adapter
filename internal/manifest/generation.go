@@ -238,16 +238,6 @@ func ValidateGenerationFromUnstructured(obj *unstructured.Unstructured) error {
 	return nil
 }
 
-// ValidateManifest validates a Kubernetes manifest has all required fields and annotations.
-// Returns error if:
-//   - Object is nil
-//   - apiVersion is missing
-//   - kind is missing
-//   - metadata.name is missing
-//   - generation annotation is missing or invalid
-//
-// This is used by both k8s_client (for direct K8s resources) and maestro_client (for ManifestWork payloads).
-
 // GetLatestGenerationFromList returns the resource with the highest generation annotation from a list.
 // It sorts by generation annotation (descending) and uses metadata.name as a secondary sort key
 // for deterministic behavior when generations are equal.

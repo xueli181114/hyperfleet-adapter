@@ -243,7 +243,7 @@ func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) str
 	// If the URL is absolute (has a scheme like http:// or https://)
 	if parsedURL.Scheme != "" {
 		// Parse the baseURL to extract its path for comparison
-		baseURLStr := execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL
+		baseURLStr := execCtx.Config.Clients.HyperfleetAPI.BaseURL
 		if baseURLStr == "" {
 			return apiCallURL
 		}
@@ -273,7 +273,7 @@ func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) str
 	}
 
 	// For relative URLs, ensure proper formatting
-	baseURLStr := execCtx.Config.Spec.Clients.HyperfleetAPI.BaseURL
+	baseURLStr := execCtx.Config.Clients.HyperfleetAPI.BaseURL
 	if baseURLStr == "" {
 		return apiCallURL
 	}
@@ -288,7 +288,7 @@ func buildHyperfleetAPICallURL(apiCallURL string, execCtx *ExecutionContext) str
 	}
 
 	// Build the full API path using path.Join for clean path handling
-	version := execCtx.Config.Spec.Clients.HyperfleetAPI.Version
+	version := execCtx.Config.Clients.HyperfleetAPI.Version
 	if version == "" {
 		version = "v1"
 	}

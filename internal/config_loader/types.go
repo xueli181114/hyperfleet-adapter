@@ -11,44 +11,17 @@ import (
 // Config is the unified configuration passed throughout the application.
 // Created by merging AdapterConfig (deployment) and AdapterTaskConfig (task).
 type Config struct {
-	APIVersion string     `yaml:"apiVersion"`
-	Kind       string     `yaml:"kind"`
-	Metadata   Metadata   `yaml:"metadata"`
-	Spec       ConfigSpec `yaml:"spec"`
-}
-
-// ConfigSpec contains the merged specification from both deployment and task configs
-type ConfigSpec struct {
-	// From AdapterConfig (deployment)
-	Adapter     AdapterInfo   `yaml:"adapter"`
-	Clients     ClientsConfig `yaml:"clients"`
-	DebugConfig bool          `yaml:"debugConfig,omitempty"`
-
-	// From AdapterTaskConfig (business logic)
+	Adapter       AdapterInfo    `yaml:"adapter"`
+	Clients       ClientsConfig  `yaml:"clients"`
+	DebugConfig   bool           `yaml:"debug_config,omitempty"`
+	Log           LogConfig      `yaml:"log,omitempty"`
 	Params        []Parameter    `yaml:"params,omitempty"`
 	Preconditions []Precondition `yaml:"preconditions,omitempty"`
 	Resources     []Resource     `yaml:"resources,omitempty"`
 	Post          *PostConfig    `yaml:"post,omitempty"`
 }
 
-// GetParams returns the parameters from the config spec
-func (c *Config) GetParams() []Parameter {
-	if c == nil {
-		return nil
-	}
-	return c.Spec.Params
-}
-
-// GetMetadata returns the metadata from the config
-func (c *Config) GetMetadata() Metadata {
-	if c == nil {
-		return Metadata{}
-	}
-	return c.Metadata
-}
-
 // Merge combines AdapterConfig (deployment) and AdapterTaskConfig (task) into a unified Config.
-// The metadata is taken from the adapter config since it takes precedence.
 // The adapter info and clients come from the deployment config.
 // The params, preconditions, resources, and post-processing come from the task config.
 func Merge(adapterCfg *AdapterConfig, taskCfg *AdapterTaskConfig) *Config {
@@ -57,21 +30,52 @@ func Merge(adapterCfg *AdapterConfig, taskCfg *AdapterTaskConfig) *Config {
 	}
 
 	return &Config{
-		APIVersion: adapterCfg.APIVersion,
-		Kind:       ExpectedKindConfig,
-		Metadata:   adapterCfg.Metadata, // Adapter config takes precedence
-		Spec: ConfigSpec{
-			// From deployment config
-			Adapter:     adapterCfg.Spec.Adapter,
-			Clients:     adapterCfg.Spec.Clients,
-			DebugConfig: adapterCfg.Spec.DebugConfig,
-			// From task config
-			Params:        taskCfg.Spec.Params,
-			Preconditions: taskCfg.Spec.Preconditions,
-			Resources:     taskCfg.Spec.Resources,
-			Post:          taskCfg.Spec.Post,
-		},
+		Adapter:       adapterCfg.Adapter,
+		Clients:       adapterCfg.Clients,
+		DebugConfig:   adapterCfg.DebugConfig,
+		Log:           adapterCfg.Log,
+		Params:        taskCfg.Params,
+		Preconditions: taskCfg.Preconditions,
+		Resources:     taskCfg.Resources,
+		Post:          taskCfg.Post,
 	}
+}
+
+const redactedValue = "**REDACTED**"
+
+// Redacted returns a copy of Config with sensitive fields replaced by redactedValue.
+func (c *Config) Redacted() *Config {
+	if c == nil {
+		return nil
+	}
+	copy := *c
+	copy.Clients = redactedClients(c.Clients)
+	return &copy
+}
+
+func redactedClients(clients ClientsConfig) ClientsConfig {
+	copy := clients
+	if clients.Maestro != nil {
+		maestroCopy := *clients.Maestro
+		if maestroCopy.Auth.TLSConfig != nil {
+			tlsCopy := *maestroCopy.Auth.TLSConfig
+			if tlsCopy.CAFile != "" {
+				tlsCopy.CAFile = redactedValue
+			}
+			if tlsCopy.CertFile != "" {
+				tlsCopy.CertFile = redactedValue
+			}
+			if tlsCopy.KeyFile != "" {
+				tlsCopy.KeyFile = redactedValue
+			}
+			if tlsCopy.HTTPCAFile != "" {
+				tlsCopy.HTTPCAFile = redactedValue
+			}
+			maestroCopy.Auth.TLSConfig = &tlsCopy
+		}
+		copy.Maestro = &maestroCopy
+	}
+	return copy
 }
 
 // FieldExpressionDef represents a common pattern for value extraction.
@@ -132,15 +136,18 @@ func ParseValueDef(v any) (*ValueDef, bool) {
 	return &valueDef, true
 }
 
-// Metadata contains the adapter metadata
-type Metadata struct {
-	Name   string            `yaml:"name" mapstructure:"name" validate:"required"`
-	Labels map[string]string `yaml:"labels,omitempty" mapstructure:"labels"`
-}
-
 // AdapterInfo contains basic adapter information
 type AdapterInfo struct {
-	Version string `yaml:"version" mapstructure:"version" validate:"required"`
+	Name    string `yaml:"name" mapstructure:"name" validate:"required"`
+	Version string `yaml:"version,omitempty" mapstructure:"version"`
+}
+
+// LogConfig contains logging configuration.
+// Priority (lowest to highest): config file < LOG_LEVEL env < --log-level flag
+type LogConfig struct {
+	Level  string `yaml:"level,omitempty" mapstructure:"level"`
+	Format string `yaml:"format,omitempty" mapstructure:"format"`
+	Output string `yaml:"output,omitempty" mapstructure:"output"`
 }
 
 // HyperfleetAPIConfig is the HyperFleet API client configuration.
@@ -149,15 +156,15 @@ type HyperfleetAPIConfig = hyperfleet_api.ClientConfig
 
 // BrokerConfig contains broker consumer configuration
 type BrokerConfig struct {
-	SubscriptionID string `yaml:"subscriptionId,omitempty" mapstructure:"subscriptionId"`
+	SubscriptionID string `yaml:"subscription_id,omitempty" mapstructure:"subscription_id"`
 	Topic          string `yaml:"topic,omitempty" mapstructure:"topic"`
 }
 
 // KubernetesConfig contains Kubernetes configuration
 type KubernetesConfig struct {
-	APIVersion string `yaml:"apiVersion" mapstructure:"apiVersion"`
+	APIVersion string `yaml:"api_version" mapstructure:"api_version"`
 	// KubeConfigPath is the path to a kubeconfig file. Empty means in-cluster auth.
-	KubeConfigPath string `yaml:"kubeConfigPath,omitempty" mapstructure:"kubeConfigPath"`
+	KubeConfigPath string `yaml:"kube_config_path,omitempty" mapstructure:"kube_config_path"`
 	// QPS is the client-side rate limit. Zero uses defaults.
 	QPS float32 `yaml:"qps,omitempty" mapstructure:"qps"`
 	// Burst is the client-side burst rate. Zero uses defaults.
@@ -190,7 +197,7 @@ type Payload struct {
 	Build interface{} `yaml:"build,omitempty" validate:"required_without=BuildRef,excluded_with=BuildRef"`
 	// BuildRef references an external YAML file containing the build definition.
 	// Mutually exclusive with Build.
-	BuildRef string `yaml:"buildRef,omitempty" validate:"required_without=Build,excluded_with=Build"`
+	BuildRef string `yaml:"build_ref,omitempty" validate:"required_without=Build,excluded_with=Build"`
 	// BuildRefContent holds the loaded content from BuildRef file (populated by loader)
 	BuildRefContent map[string]interface{} `yaml:"-"`
 }
@@ -201,10 +208,10 @@ func (p *Payload) Validate() error {
 	hasBuildRef := p.BuildRef != ""
 
 	if !hasBuild && !hasBuildRef {
-		return fmt.Errorf("either 'build' or 'buildRef' must be set")
+		return fmt.Errorf("either 'build' or 'build_ref' must be set")
 	}
 	if hasBuild && hasBuildRef {
-		return fmt.Errorf("'build' and 'buildRef' are mutually exclusive")
+		return fmt.Errorf("'build' and 'build_ref' are mutually exclusive")
 	}
 	return nil
 }
@@ -213,7 +220,7 @@ func (p *Payload) Validate() error {
 // Used by Precondition and PostAction to reduce duplication.
 type ActionBase struct {
 	Name    string     `yaml:"name" validate:"required"`
-	APICall *APICall   `yaml:"apiCall,omitempty" validate:"omitempty"`
+	APICall *APICall   `yaml:"api_call,omitempty" validate:"omitempty"`
 	Log     *LogAction `yaml:"log,omitempty"`
 }
 
@@ -231,8 +238,8 @@ type APICall struct {
 	Method        string   `yaml:"method" validate:"required,oneof=GET POST PUT PATCH DELETE"`
 	URL           string   `yaml:"url" validate:"required"`
 	Timeout       string   `yaml:"timeout,omitempty"`
-	RetryAttempts int      `yaml:"retryAttempts,omitempty"`
-	RetryBackoff  string   `yaml:"retryBackoff,omitempty"`
+	RetryAttempts int      `yaml:"retry_attempts,omitempty"`
+	RetryBackoff  string   `yaml:"retry_backoff,omitempty"`
 	Headers       []Header `yaml:"headers,omitempty"`
 	Body          string   `yaml:"body,omitempty"`
 }
@@ -304,7 +311,7 @@ type TransportConfig struct {
 // MaestroTransportConfig contains maestro-specific transport settings
 type MaestroTransportConfig struct {
 	// TargetCluster is the name of the target cluster (consumer) for ManifestWork delivery
-	TargetCluster string `yaml:"targetCluster" validate:"required"`
+	TargetCluster string `yaml:"target_cluster" validate:"required"`
 }
 
 // Resource represents a resource configuration.
@@ -315,11 +322,11 @@ type Resource struct {
 	Name             string           `yaml:"name" validate:"required,resourcename"`
 	Transport        *TransportConfig `yaml:"transport,omitempty"`
 	Manifest         interface{}      `yaml:"manifest,omitempty"`
-	RecreateOnChange bool             `yaml:"recreateOnChange,omitempty"`
+	RecreateOnChange bool             `yaml:"recreate_on_change,omitempty"`
 	Discovery        *DiscoveryConfig `yaml:"discovery,omitempty" validate:"required"`
 	// NestedDiscoveries defines how to discover individual sub-resources within the applied manifest.
 	// For example, discovering resources inside a ManifestWork's workload.
-	NestedDiscoveries []NestedDiscovery `yaml:"nestedDiscoveries,omitempty" validate:"dive"`
+	NestedDiscoveries []NestedDiscovery `yaml:"nested_discoveries,omitempty" validate:"dive"`
 }
 
 // NestedDiscovery defines a named discovery for a sub-resource within the parent manifest.
@@ -331,19 +338,19 @@ type NestedDiscovery struct {
 // DiscoveryConfig represents resource discovery configuration
 type DiscoveryConfig struct {
 	Namespace   string          `yaml:"namespace,omitempty"`
-	ByName      string          `yaml:"byName,omitempty" validate:"required_without=BySelectors"`
-	BySelectors *SelectorConfig `yaml:"bySelectors,omitempty" validate:"required_without=ByName,omitempty"`
+	ByName      string          `yaml:"by_name,omitempty" validate:"required_without=BySelectors"`
+	BySelectors *SelectorConfig `yaml:"by_selectors,omitempty" validate:"required_without=ByName,omitempty"`
 }
 
 // SelectorConfig represents label selector configuration
 type SelectorConfig struct {
-	LabelSelector map[string]string `yaml:"labelSelector,omitempty" validate:"required,min=1"`
+	LabelSelector map[string]string `yaml:"label_selector,omitempty" validate:"required,min=1"`
 }
 
 // PostConfig represents post-processing configuration
 type PostConfig struct {
 	Payloads    []Payload    `yaml:"payloads,omitempty" validate:"dive"`
-	PostActions []PostAction `yaml:"postActions,omitempty" validate:"dive"`
+	PostActions []PostAction `yaml:"post_actions,omitempty" validate:"dive"`
 }
 
 // PostAction represents a post-processing action
@@ -424,37 +431,30 @@ func (ve *ValidationErrors) HasErrors() bool {
 // Contains infrastructure settings that can be overridden via environment variables
 // and CLI flags using Viper.
 type AdapterConfig struct {
-	APIVersion string            `yaml:"apiVersion" mapstructure:"apiVersion" validate:"required"`
-	Kind       string            `yaml:"kind" mapstructure:"kind" validate:"required,eq=AdapterConfig"`
-	Metadata   Metadata          `yaml:"metadata" mapstructure:"metadata"`
-	Spec       AdapterConfigSpec `yaml:"spec" mapstructure:"spec"`
-}
-
-// AdapterConfigSpec contains the deployment specification
-type AdapterConfigSpec struct {
 	Adapter     AdapterInfo   `yaml:"adapter" mapstructure:"adapter"`
 	Clients     ClientsConfig `yaml:"clients" mapstructure:"clients"`
-	DebugConfig bool          `yaml:"debugConfig,omitempty" mapstructure:"debugConfig"`
+	DebugConfig bool          `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
+	Log         LogConfig     `yaml:"log,omitempty" mapstructure:"log"`
 }
 
 // ClientsConfig contains configuration for all external clients
 type ClientsConfig struct {
 	Maestro       *MaestroClientConfig `yaml:"maestro,omitempty" mapstructure:"maestro"`
-	HyperfleetAPI HyperfleetAPIConfig  `yaml:"hyperfleetApi" mapstructure:"hyperfleetApi"`
+	HyperfleetAPI HyperfleetAPIConfig  `yaml:"hyperfleet_api" mapstructure:"hyperfleet_api"`
 	Broker        BrokerConfig         `yaml:"broker,omitempty" mapstructure:"broker"`
 	Kubernetes    KubernetesConfig     `yaml:"kubernetes" mapstructure:"kubernetes"`
 }
 
 // MaestroClientConfig contains Maestro client configuration
 type MaestroClientConfig struct {
-	GRPCServerAddress        string            `yaml:"grpcServerAddress" mapstructure:"grpcServerAddress"`
-	HTTPServerAddress        string            `yaml:"httpServerAddress" mapstructure:"httpServerAddress"`
-	SourceID                 string            `yaml:"sourceId" mapstructure:"sourceId"`
-	ClientID                 string            `yaml:"clientId" mapstructure:"clientId"`
+	GRPCServerAddress        string            `yaml:"grpc_server_address" mapstructure:"grpc_server_address"`
+	HTTPServerAddress        string            `yaml:"http_server_address" mapstructure:"http_server_address"`
+	SourceID                 string            `yaml:"source_id" mapstructure:"source_id"`
+	ClientID                 string            `yaml:"client_id" mapstructure:"client_id"`
 	Auth                     MaestroAuthConfig `yaml:"auth" mapstructure:"auth"`
 	Timeout                  string            `yaml:"timeout" mapstructure:"timeout"`
-	ServerHealthinessTimeout string            `yaml:"serverHealthinessTimeout,omitempty" mapstructure:"serverHealthinessTimeout"`
-	RetryAttempts            int               `yaml:"retryAttempts" mapstructure:"retryAttempts"`
+	ServerHealthinessTimeout string            `yaml:"server_healthiness_timeout,omitempty" mapstructure:"server_healthiness_timeout"`
+	RetryAttempts            int               `yaml:"retry_attempts" mapstructure:"retry_attempts"`
 	Keepalive                *KeepaliveConfig  `yaml:"keepalive,omitempty" mapstructure:"keepalive"`
 	Insecure                 bool              `yaml:"insecure,omitempty" mapstructure:"insecure"`
 }
@@ -462,15 +462,15 @@ type MaestroClientConfig struct {
 // MaestroAuthConfig contains authentication configuration for Maestro
 type MaestroAuthConfig struct {
 	Type      string     `yaml:"type" mapstructure:"type"` // "tls" or "none"
-	TLSConfig *TLSConfig `yaml:"tlsConfig,omitempty" mapstructure:"tlsConfig"`
+	TLSConfig *TLSConfig `yaml:"tls_config,omitempty" mapstructure:"tls_config"`
 }
 
 // TLSConfig contains TLS certificate configuration
 type TLSConfig struct {
-	CAFile     string `yaml:"caFile" mapstructure:"caFile"`
-	CertFile   string `yaml:"certFile" mapstructure:"certFile"`
-	KeyFile    string `yaml:"keyFile" mapstructure:"keyFile"`
-	HTTPCAFile string `yaml:"httpCaFile,omitempty" mapstructure:"httpCaFile"`
+	CAFile     string `yaml:"ca_file" mapstructure:"ca_file"`
+	CertFile   string `yaml:"cert_file" mapstructure:"cert_file"`
+	KeyFile    string `yaml:"key_file" mapstructure:"key_file"`
+	HTTPCAFile string `yaml:"http_ca_file,omitempty" mapstructure:"http_ca_file"`
 }
 
 // KeepaliveConfig contains gRPC keepalive configuration
@@ -483,14 +483,6 @@ type KeepaliveConfig struct {
 // Contains params, preconditions, resources, and post-processing actions.
 // This config is loaded from YAML without environment variable overrides.
 type AdapterTaskConfig struct {
-	APIVersion string          `yaml:"apiVersion" validate:"required"`
-	Kind       string          `yaml:"kind" validate:"required,eq=AdapterTaskConfig"`
-	Metadata   Metadata        `yaml:"metadata"`
-	Spec       AdapterTaskSpec `yaml:"spec"`
-}
-
-// AdapterTaskSpec contains the task specification
-type AdapterTaskSpec struct {
 	Params        []Parameter    `yaml:"params,omitempty" validate:"dive"`
 	Preconditions []Precondition `yaml:"preconditions,omitempty" validate:"dive"`
 	Resources     []Resource     `yaml:"resources,omitempty" validate:"unique=Name,dive"`

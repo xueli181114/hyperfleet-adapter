@@ -13,12 +13,7 @@ import (
 // baseTaskConfig returns a minimal valid AdapterTaskConfig for testing.
 // Tests can modify the returned config to set up specific scenarios.
 func baseTaskConfig() *AdapterTaskConfig {
-	return &AdapterTaskConfig{
-		APIVersion: "hyperfleet.redhat.com/v1alpha1",
-		Kind:       "AdapterTaskConfig",
-		Metadata:   Metadata{Name: "test-adapter"},
-		Spec:       AdapterTaskSpec{},
-	}
+	return &AdapterTaskConfig{}
 }
 
 // newTaskValidator is a helper that creates a TaskConfigValidator with semantic validation
@@ -30,7 +25,7 @@ func TestValidateConditionOperators(t *testing.T) {
 	// Helper to create task config with a single condition
 	withCondition := func(cond Condition) *AdapterTaskConfig {
 		cfg := baseTaskConfig()
-		cfg.Spec.Preconditions = []Precondition{{
+		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{Name: "checkStatus"},
 			Conditions: []Condition{cond},
 		}}
@@ -39,7 +34,7 @@ func TestValidateConditionOperators(t *testing.T) {
 
 	t.Run("valid operators", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Preconditions = []Precondition{{
+		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{Name: "checkStatus"},
 			Conditions: []Condition{
 				{Field: "status", Operator: "equals", Value: "Ready"},
@@ -140,11 +135,11 @@ func TestValidateConditionOperators(t *testing.T) {
 func TestValidateTemplateVariables(t *testing.T) {
 	t.Run("defined variables", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Params = []Parameter{
+		cfg.Params = []Parameter{
 			{Name: "clusterId", Source: "event.id"},
 			{Name: "apiUrl", Source: "env.API_URL"},
 		}
-		cfg.Spec.Preconditions = []Precondition{{
+		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{
 				Name:    "checkCluster",
 				APICall: &APICall{Method: "GET", URL: "{{ .apiUrl }}/clusters/{{ .clusterId }}"},
@@ -157,8 +152,8 @@ func TestValidateTemplateVariables(t *testing.T) {
 
 	t.Run("undefined variable in URL", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Params = []Parameter{{Name: "clusterId", Source: "event.id"}}
-		cfg.Spec.Preconditions = []Precondition{{
+		cfg.Params = []Parameter{{Name: "clusterId", Source: "event.id"}}
+		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{
 				Name:    "checkCluster",
 				APICall: &APICall{Method: "GET", URL: "{{ .undefinedVar }}/clusters/{{ .clusterId }}"},
@@ -173,8 +168,8 @@ func TestValidateTemplateVariables(t *testing.T) {
 
 	t.Run("undefined variable in resource manifest", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Params = []Parameter{{Name: "clusterId", Source: "event.id"}}
-		cfg.Spec.Resources = []Resource{{
+		cfg.Params = []Parameter{{Name: "clusterId", Source: "event.id"}}
+		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Manifest: map[string]interface{}{
 				"apiVersion": "v1",
@@ -192,15 +187,15 @@ func TestValidateTemplateVariables(t *testing.T) {
 
 	t.Run("captured variable is available for resources", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Params = []Parameter{{Name: "apiUrl", Source: "env.API_URL"}}
-		cfg.Spec.Preconditions = []Precondition{{
+		cfg.Params = []Parameter{{Name: "apiUrl", Source: "env.API_URL"}}
+		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{
 				Name:    "getCluster",
 				APICall: &APICall{Method: "GET", URL: "{{ .apiUrl }}/clusters"},
 			},
-			Capture: []CaptureField{{Name: "clusterName", FieldExpressionDef: FieldExpressionDef{Field: "metadata.name"}}},
+			Capture: []CaptureField{{Name: "clusterName", FieldExpressionDef: FieldExpressionDef{Field: "name"}}},
 		}}
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Manifest: map[string]interface{}{
 				"apiVersion": "v1",
@@ -219,7 +214,7 @@ func TestValidateCELExpressions(t *testing.T) {
 	// Helper to create config with a CEL expression precondition
 	withExpression := func(expr string) *AdapterTaskConfig {
 		cfg := baseTaskConfig()
-		cfg.Spec.Preconditions = []Precondition{{ActionBase: ActionBase{Name: "check"}, Expression: expr}}
+		cfg.Preconditions = []Precondition{{ActionBase: ActionBase{Name: "check"}, Expression: expr}}
 		return cfg
 	}
 
@@ -240,7 +235,7 @@ func TestValidateCELExpressions(t *testing.T) {
 	})
 
 	t.Run("valid CEL with has() function", func(t *testing.T) {
-		cfg := withExpression(`has(cluster.status) && cluster.status.phase == "Ready"`)
+		cfg := withExpression(`has(cluster.status) && cluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")`)
 		v := newTaskValidator(cfg)
 		require.NoError(t, v.ValidateStructure())
 		require.NoError(t, v.ValidateSemantic())
@@ -251,7 +246,7 @@ func TestValidateK8sManifests(t *testing.T) {
 	// Helper to create config with a resource manifest
 	withResource := func(manifest map[string]interface{}) *AdapterTaskConfig {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name:      "testResource",
 			Manifest:  manifest,
 			Discovery: &DiscoveryConfig{Namespace: "*", ByName: "test"},
@@ -366,11 +361,11 @@ func TestValidationErrorsFormat(t *testing.T) {
 func TestValidateSemantic(t *testing.T) {
 	// Test that ValidateSemantic catches multiple errors
 	cfg := baseTaskConfig()
-	cfg.Spec.Preconditions = []Precondition{
+	cfg.Preconditions = []Precondition{
 		{ActionBase: ActionBase{Name: "check1"}, Conditions: []Condition{{Field: "status", Operator: "badOperator", Value: "Ready"}}},
 		{ActionBase: ActionBase{Name: "check2"}, Expression: "invalid ))) syntax"},
 	}
-	cfg.Spec.Resources = []Resource{{
+	cfg.Resources = []Resource{{
 		Name: "testNs",
 		Manifest: map[string]interface{}{
 			"kind":     "Namespace", // missing apiVersion
@@ -387,19 +382,19 @@ func TestValidateSemantic(t *testing.T) {
 }
 
 func TestBuiltinVariables(t *testing.T) {
-	// Test that builtin variables (like metadata.name) are recognized
+	// Test that builtin variables (like adapter.name) are recognized
 	cfg := baseTaskConfig()
-	cfg.Spec.Resources = []Resource{{
+	cfg.Resources = []Resource{{
 		Name: "testNs",
 		Manifest: map[string]interface{}{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
 			"metadata": map[string]interface{}{
-				"name":   "ns-{{ .metadata.name }}",
-				"labels": map[string]interface{}{"adapter": "{{ .metadata.name }}"},
+				"name":   "ns-{{ .adapter.name }}",
+				"labels": map[string]interface{}{"adapter": "{{ .adapter.name }}"},
 			},
 		},
-		Discovery: &DiscoveryConfig{Namespace: "*", ByName: "ns-{{ .metadata.name }}"},
+		Discovery: &DiscoveryConfig{Namespace: "*", ByName: "ns-{{ .adapter.name }}"},
 	}}
 	v := newTaskValidator(cfg)
 	require.NoError(t, v.ValidateStructure())
@@ -445,7 +440,7 @@ func TestPayloadValidate(t *testing.T) {
 				Name: "test",
 			},
 			wantError: true,
-			errorMsg:  "must have either 'build' or 'buildRef' set",
+			errorMsg:  "must have either 'build' or 'build_ref' set",
 		},
 	}
 
@@ -469,7 +464,7 @@ func TestValidateCaptureFields(t *testing.T) {
 	// Helper to create config with capture fields
 	withCapture := func(captures []CaptureField) *AdapterTaskConfig {
 		cfg := baseTaskConfig()
-		cfg.Spec.Preconditions = []Precondition{{
+		cfg.Preconditions = []Precondition{{
 			ActionBase: ActionBase{
 				Name:    "getStatus",
 				APICall: &APICall{Method: "GET", URL: "http://example.com/api"},
@@ -481,7 +476,7 @@ func TestValidateCaptureFields(t *testing.T) {
 
 	t.Run("valid capture with field only", func(t *testing.T) {
 		cfg := withCapture([]CaptureField{
-			{Name: "clusterName", FieldExpressionDef: FieldExpressionDef{Field: "metadata.name"}},
+			{Name: "clusterName", FieldExpressionDef: FieldExpressionDef{Field: "name"}},
 			{Name: "clusterPhase", FieldExpressionDef: FieldExpressionDef{Field: "status.phase"}},
 		})
 		v := newTaskValidator(cfg)
@@ -497,7 +492,7 @@ func TestValidateCaptureFields(t *testing.T) {
 	})
 
 	t.Run("invalid - both field and expression set", func(t *testing.T) {
-		cfg := withCapture([]CaptureField{{Name: "conflicting", FieldExpressionDef: FieldExpressionDef{Field: "metadata.name", Expression: "1 + 1"}}})
+		cfg := withCapture([]CaptureField{{Name: "conflicting", FieldExpressionDef: FieldExpressionDef{Field: "name", Expression: "1 + 1"}}})
 		err := newTaskValidator(cfg).ValidateStructure()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "mutually exclusive")
@@ -511,7 +506,7 @@ func TestValidateCaptureFields(t *testing.T) {
 	})
 
 	t.Run("invalid - capture name missing", func(t *testing.T) {
-		cfg := withCapture([]CaptureField{{FieldExpressionDef: FieldExpressionDef{Field: "metadata.name"}}})
+		cfg := withCapture([]CaptureField{{FieldExpressionDef: FieldExpressionDef{Field: "name"}}})
 		err := newTaskValidator(cfg).ValidateStructure()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "name is required")
@@ -526,14 +521,14 @@ func TestYamlFieldName(t *testing.T) {
 		goFieldName  string
 		expectedYaml string
 	}{
-		{"ByName", "byName"},
-		{"BySelectors", "bySelectors"},
+		{"ByName", "by_name"},
+		{"BySelectors", "by_selectors"},
 		{"Field", "field"},
 		{"Expression", "expression"},
-		{"APIVersion", "apiVersion"},
+		{"APIVersion", "api_version"},
 		{"Name", "name"},
 		{"Namespace", "namespace"},
-		{"LabelSelector", "labelSelector"},
+		{"LabelSelector", "label_selector"},
 	}
 
 	for _, tt := range tests {
@@ -551,7 +546,7 @@ func TestFieldNameCachePopulated(t *testing.T) {
 	// Verify key fields are in the cache
 	expectedFields := []string{
 		"ByName", "BySelectors", "Field", "Expression",
-		"Name", "Namespace", "APIVersion", "Kind",
+		"Name", "Namespace", "APIVersion",
 	}
 
 	for _, field := range expectedFields {
@@ -569,7 +564,7 @@ func TestFieldNameCachePopulated(t *testing.T) {
 func TestValidateTransportConfig(t *testing.T) {
 	t.Run("valid kubernetes transport", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Transport: &TransportConfig{
 				Client: TransportClientKubernetes,
@@ -588,7 +583,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("valid maestro transport with inline manifest (ManifestWork)", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client: TransportClientMaestro,
@@ -614,7 +609,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("unsupported transport client", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Transport: &TransportConfig{
 				Client: "unsupported",
@@ -635,7 +630,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("maestro transport missing maestro config", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client: TransportClientMaestro,
@@ -656,7 +651,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("maestro transport missing targetCluster", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client:  TransportClientMaestro,
@@ -678,12 +673,12 @@ func TestValidateTransportConfig(t *testing.T) {
 		// targetCluster is structurally required
 		err := v.ValidateStructure()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "targetCluster")
+		assert.Contains(t, err.Error(), "target_cluster")
 	})
 
 	t.Run("maestro transport missing manifest", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client: TransportClientMaestro,
@@ -707,7 +702,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("kubernetes transport missing manifest", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testNs",
 			Transport: &TransportConfig{
 				Client: TransportClientKubernetes,
@@ -724,7 +719,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("no transport defaults to kubernetes - manifest required", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testNs",
 			// No Transport (defaults to kubernetes)
 			// No Manifest
@@ -739,8 +734,8 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("maestro transport with template variable in targetCluster", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Params = []Parameter{{Name: "clusterName", Source: "event.name"}}
-		cfg.Spec.Resources = []Resource{{
+		cfg.Params = []Parameter{{Name: "clusterName", Source: "event.name"}}
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client: TransportClientMaestro,
@@ -766,7 +761,7 @@ func TestValidateTransportConfig(t *testing.T) {
 
 	t.Run("maestro transport with undefined template variable in targetCluster", func(t *testing.T) {
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client: TransportClientMaestro,
@@ -795,7 +790,7 @@ func TestValidateTransportConfig(t *testing.T) {
 	t.Run("maestro transport skips K8s manifest validation", func(t *testing.T) {
 		// Maestro resources use manifest for ManifestWork content - should skip K8s apiVersion/kind validation
 		cfg := baseTaskConfig()
-		cfg.Spec.Resources = []Resource{{
+		cfg.Resources = []Resource{{
 			Name: "testMW",
 			Transport: &TransportConfig{
 				Client: TransportClientMaestro,
@@ -824,9 +819,9 @@ func TestValidateFileReferencesManifestRef(t *testing.T) {
 
 	// Create a test manifest file (ManifestWork content)
 	manifestDir := filepath.Join(tmpDir, "templates")
-	require.NoError(t, os.MkdirAll(manifestDir, 0755))
+	require.NoError(t, os.MkdirAll(manifestDir, 0o755))
 	manifestFile := filepath.Join(manifestDir, "manifestwork.yaml")
-	require.NoError(t, os.WriteFile(manifestFile, []byte("apiVersion: work.open-cluster-management.io/v1\nkind: ManifestWork"), 0644))
+	require.NoError(t, os.WriteFile(manifestFile, []byte("apiVersion: work.open-cluster-management.io/v1\nkind: ManifestWork"), 0o644))
 
 	tests := []struct {
 		name    string
@@ -837,56 +832,46 @@ func TestValidateFileReferencesManifestRef(t *testing.T) {
 		{
 			name: "valid manifest ref for maestro transport",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Resources: []Resource{{
-						Name: "test",
-						Transport: &TransportConfig{
-							Client: TransportClientMaestro,
-							Maestro: &MaestroTransportConfig{
-								TargetCluster: "cluster1",
-							},
+				Resources: []Resource{{
+					Name: "test",
+					Transport: &TransportConfig{
+						Client: TransportClientMaestro,
+						Maestro: &MaestroTransportConfig{
+							TargetCluster: "cluster1",
 						},
-						Manifest: map[string]interface{}{
-							"ref": "templates/manifestwork.yaml",
+					},
+					Manifest: map[string]interface{}{
+						"ref": "templates/manifestwork.yaml",
+					},
+					Discovery: &DiscoveryConfig{
+						BySelectors: &SelectorConfig{
+							LabelSelector: map[string]string{"app": "test"},
 						},
-						Discovery: &DiscoveryConfig{
-							BySelectors: &SelectorConfig{
-								LabelSelector: map[string]string{"app": "test"},
-							},
-						},
-					}},
-				},
+					},
+				}},
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid manifest ref - file not found",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Resources: []Resource{{
-						Name: "test",
-						Transport: &TransportConfig{
-							Client: TransportClientMaestro,
-							Maestro: &MaestroTransportConfig{
-								TargetCluster: "cluster1",
-							},
+				Resources: []Resource{{
+					Name: "test",
+					Transport: &TransportConfig{
+						Client: TransportClientMaestro,
+						Maestro: &MaestroTransportConfig{
+							TargetCluster: "cluster1",
 						},
-						Manifest: map[string]interface{}{
-							"ref": "templates/nonexistent.yaml",
+					},
+					Manifest: map[string]interface{}{
+						"ref": "templates/nonexistent.yaml",
+					},
+					Discovery: &DiscoveryConfig{
+						BySelectors: &SelectorConfig{
+							LabelSelector: map[string]string{"app": "test"},
 						},
-						Discovery: &DiscoveryConfig{
-							BySelectors: &SelectorConfig{
-								LabelSelector: map[string]string{"app": "test"},
-							},
-						},
-					}},
-				},
+					},
+				}},
 			},
 			wantErr: true,
 			errMsg:  "does not exist",
@@ -894,29 +879,24 @@ func TestValidateFileReferencesManifestRef(t *testing.T) {
 		{
 			name: "inline manifest - no file reference validation needed",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Resources: []Resource{{
-						Name: "test",
-						Transport: &TransportConfig{
-							Client: TransportClientMaestro,
-							Maestro: &MaestroTransportConfig{
-								TargetCluster: "cluster1",
-							},
+				Resources: []Resource{{
+					Name: "test",
+					Transport: &TransportConfig{
+						Client: TransportClientMaestro,
+						Maestro: &MaestroTransportConfig{
+							TargetCluster: "cluster1",
 						},
-						Manifest: map[string]interface{}{
-							"apiVersion": "work.open-cluster-management.io/v1",
-							"kind":       "ManifestWork",
+					},
+					Manifest: map[string]interface{}{
+						"apiVersion": "work.open-cluster-management.io/v1",
+						"kind":       "ManifestWork",
+					},
+					Discovery: &DiscoveryConfig{
+						BySelectors: &SelectorConfig{
+							LabelSelector: map[string]string{"app": "test"},
 						},
-						Discovery: &DiscoveryConfig{
-							BySelectors: &SelectorConfig{
-								LabelSelector: map[string]string{"app": "test"},
-							},
-						},
-					}},
-				},
+					},
+				}},
 			},
 			wantErr: false,
 		},

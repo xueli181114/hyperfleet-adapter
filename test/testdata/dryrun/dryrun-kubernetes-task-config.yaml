@@ -1,209 +1,201 @@
 # Task configuration for dry-run testing with Kubernetes transport
 # Unlike the Maestro example, Kubernetes transport applies resources directly
 # (no ManifestWork wrapper). Each K8s resource is a separate resource entry.
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: dryrun-task
-  labels:
-    hyperfleet.io/adapter-type: dryrun
+params:
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
 
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
+  - name: "clusterKind"
+    source: "event.kind"
+    type: "string"
+    default: "Cluster"
 
-    - name: "clusterKind"
-      source: "event.kind"
-      type: "string"
-      default: "Cluster"
+  - name: "generation"
+    source: "event.generation"
+    type: "int"
+    required: true
 
-    - name: "generation"
-      source: "event.generation"
-      type: "string"
-      required: true
+  - name: "region"
+    source: "env.REGION"
+    type: "string"
+    default: "us-east-1"
 
-    - name: "region"
-      source: "env.REGION"
-      type: "string"
-      default: "us-east-1"
+  - name: "adapterName"
+    source: "env.ADAPTER_NAME"
+    type: "string"
+    default: "dry-run-adapter"
 
-    - name: "adapterName"
-      source: "env.ADAPTER_NAME"
-      type: "string"
-      default: "dry-run-adapter"
+preconditions:
+  - name: "fetch-cluster"
+    api_call:
+      method: "GET"
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+      timeout: 10s
+    capture:
+      - name: "clusterName"
+        field: "name"
+      - name: "clusterStatus"
+        expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status
+            : "False"
+      - name: "computeNodes"
+        field: "nodes.compute"
+      - name: "timestamp"
+        expression:  "\"2006-01-02T15:04:05Z07:00\""
 
-  preconditions:
-    - name: "fetch-cluster"
-      apiCall:
-        method: "GET"
-        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-        timeout: 10s
-      capture:
-        - name: "clusterName"
-          field: "name"
-        - name: "clusterStatus"
-          expression: |
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].status
-              : "False"
-        - name: "computeNodes"
-          field: "nodes.compute"
-        - name: "timestamp"
-          expression:  "\"2006-01-02T15:04:05Z07:00\""
+    conditions:
+      - field: "clusterStatus"
+        operator: "notEquals"
+        value: "True"
 
-      conditions:
-        - field: "clusterStatus"
-          operator: "notEquals"
-          value: "True"
+resources:
+  # Resource 0: Namespace — applied directly to the K8s cluster
+  - name: "namespace0"
+    transport:
+      client: kubernetes
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ .clusterId }}"
+        labels:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/managed-by: "{{ .adapterName }}"
+          hyperfleet.io/resource-type: "namespace"
+        annotations:
+          hyperfleet.io/created-by: "hyperfleet-adapter"
+          hyperfleet.io/generation: "{{ .generation }}"
 
-  resources:
-    # Resource 0: Namespace — applied directly to the K8s cluster
-    - name: "namespace0"
-      transport:
-        client: kubernetes
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "{{ .clusterId | lower }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/managed-by: "{{ .adapterName }}"
-            hyperfleet.io/resource-type: "namespace"
-          annotations:
-            hyperfleet.io/created-by: "hyperfleet-adapter"
-            hyperfleet.io/generation: "{{ .generation }}"
+    discovery:
+      by_name: "{{ .clusterId }}"
 
-      discovery:
-        byName: "{{ .clusterId | lower }}"
+  # Resource 1: ConfigMap — applied directly to the K8s cluster
+  - name: "configmap0"
+    transport:
+      client: kubernetes
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ .clusterId }}-config"
+        namespace: "{{ .clusterId }}"
+        labels:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+        annotations:
+          hyperfleet.io/generation: "{{ .generation }}"
+      data:
+        cluster_id: "{{ .clusterId }}"
+        cluster_name: "{{ .clusterName }}"
 
-    # Resource 1: ConfigMap — applied directly to the K8s cluster
-    - name: "configmap0"
-      transport:
-        client: kubernetes
-      manifest:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "{{ .clusterId }}-config"
-          namespace: "{{ .clusterId | lower }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          annotations:
-            hyperfleet.io/generation: "{{ .generation }}"
+    discovery:
+      namespace: "{{ .clusterId }}"
+      by_name: "{{ .clusterId }}-config"
+
+# Post-processing — no nested discoveries needed for direct K8s resources.
+# Each resource is a top-level entry in the resources map.
+post:
+  payloads:
+    - name: "statusPayload"
+      build:
+        adapter: "dryrun-kubernetes"
+        conditions:
+          # Applied: Were the K8s resources created?
+          - type: "Applied"
+            status:
+              expression: |
+                has(resources.namespace0) && has(resources.configmap0)
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                has(resources.namespace0) && has(resources.configmap0)
+                ? "ResourcesApplied"
+                : "ResourcesNotDiscovered"
+            message:
+              expression: |
+                has(resources.namespace0) && has(resources.configmap0)
+                ? "Namespace " + resources.namespace0.metadata.name + " and ConfigMap " + resources.configmap0.metadata.name + " applied"
+                : "One or more resources not yet discovered"
+
+          # Available: Is the namespace active?
+          - type: "Available"
+            status:
+              expression: |
+                has(resources.namespace0)
+                  && has(resources.namespace0.status)
+                  && has(resources.namespace0.status.phase)
+                  && resources.namespace0.status.phase == "Active"
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                has(resources.namespace0)
+                  && has(resources.namespace0.status)
+                  && has(resources.namespace0.status.phase)
+                ? resources.namespace0.status.phase
+                : "NamespaceNotReady"
+            message:
+              expression: |
+                has(resources.namespace0)
+                  && has(resources.namespace0.status)
+                  && has(resources.namespace0.status.phase)
+                ? "Namespace phase: " + resources.namespace0.status.phase
+                : "Namespace not yet discovered or status unavailable"
+
+          # Health: Adapter execution status
+          - type: "Health"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success"
+                  && !adapter.?resourcesSkipped.orValue(false)
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "ResourcesSkipped"
+                  : "Healthy"
+            message:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "Adapter failed at phase ["
+                    + adapter.?executionError.?phase.orValue("unknown")
+                    + "] step ["
+                    + adapter.?executionError.?step.orValue("unknown")
+                    + "]: "
+                    + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
+                  : "Adapter execution completed successfully"
+
+        observed_generation:
+          expression: "generation"
+        observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+
         data:
-          cluster_id: "{{ .clusterId }}"
-          cluster_name: "{{ .clusterName }}"
+          namespace:
+            name:
+              expression: |
+                resources.?namespace0.?metadata.?name.orValue("")
+            phase:
+              expression: |
+                resources.?namespace0.?status.?phase.orValue("")
+          configmap:
+            name:
+              expression: |
+                resources.?configmap0.?metadata.?name.orValue("")
+            clusterId:
+              expression: |
+                resources.?configmap0.?data.?cluster_id.orValue("")
 
-      discovery:
-        namespace: "{{ .clusterId | lower }}"
-        byName: "{{ .clusterId }}-config"
-
-  # Post-processing — no nested discoveries needed for direct K8s resources.
-  # Each resource is a top-level entry in the resources map.
-  post:
-    payloads:
-      - name: "statusPayload"
-        build:
-          adapter: "dryrun-kubernetes"
-          conditions:
-            # Applied: Were the K8s resources created?
-            - type: "Applied"
-              status:
-                expression: |
-                  has(resources.namespace0) && has(resources.configmap0)
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  has(resources.namespace0) && has(resources.configmap0)
-                  ? "ResourcesApplied"
-                  : "ResourcesNotDiscovered"
-              message:
-                expression: |
-                  has(resources.namespace0) && has(resources.configmap0)
-                  ? "Namespace " + resources.namespace0.metadata.name + " and ConfigMap " + resources.configmap0.metadata.name + " applied"
-                  : "One or more resources not yet discovered"
-
-            # Available: Is the namespace active?
-            - type: "Available"
-              status:
-                expression: |
-                  has(resources.namespace0)
-                    && has(resources.namespace0.status)
-                    && has(resources.namespace0.status.phase)
-                    && resources.namespace0.status.phase == "Active"
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  has(resources.namespace0)
-                    && has(resources.namespace0.status)
-                    && has(resources.namespace0.status.phase)
-                  ? resources.namespace0.status.phase
-                  : "NamespaceNotReady"
-              message:
-                expression: |
-                  has(resources.namespace0)
-                    && has(resources.namespace0.status)
-                    && has(resources.namespace0.status.phase)
-                  ? "Namespace phase: " + resources.namespace0.status.phase
-                  : "Namespace not yet discovered or status unavailable"
-
-            # Health: Adapter execution status
-            - type: "Health"
-              status:
-                expression: |
-                  adapter.?executionStatus.orValue("") == "success"
-                    && !adapter.?resourcesSkipped.orValue(false)
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  adapter.?executionStatus.orValue("") != "success"
-                  ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
-                  : adapter.?resourcesSkipped.orValue(false)
-                    ? "ResourcesSkipped"
-                    : "Healthy"
-              message:
-                expression: |
-                  adapter.?executionStatus.orValue("") != "success"
-                  ? "Adapter failed at phase ["
-                      + adapter.?executionError.?phase.orValue("unknown")
-                      + "] step ["
-                      + adapter.?executionError.?step.orValue("unknown")
-                      + "]: "
-                      + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
-                  : adapter.?resourcesSkipped.orValue(false)
-                    ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
-                    : "Adapter execution completed successfully"
-
-          observed_generation:
-            expression: "generation"
-          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-
-          data:
-            namespace:
-              name:
-                expression: |
-                  resources.?namespace0.?metadata.?name.orValue("")
-              phase:
-                expression: |
-                  resources.?namespace0.?status.?phase.orValue("")
-            configmap:
-              name:
-                expression: |
-                  resources.?configmap0.?metadata.?name.orValue("")
-              clusterId:
-                expression: |
-                  resources.?configmap0.?data.?cluster_id.orValue("")
-
-    postActions:
-      - name: "update-status"
-        apiCall:
-          method: "PATCH"
-          url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
-          body: "{{ .statusPayload }}"
+  post_actions:
+    - name: "update-status"
+      api_call:
+        method: "PATCH"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+        body: "{{ .statusPayload }}"

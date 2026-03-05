@@ -12,10 +12,10 @@ adapterTaskConfig:
 broker:
   create: true
   googlepubsub:
-    projectId: CHANGE_ME
-    subscriptionId: CHANGE_ME
+    project_id: CHANGE_ME
+    subscription_id: CHANGE_ME
     topic: CHANGE_ME
-    deadLetterTopic: CHANGE_ME
+    dead_letter_topic: CHANGE_ME
 
 image:
   registry: CHANGE_ME

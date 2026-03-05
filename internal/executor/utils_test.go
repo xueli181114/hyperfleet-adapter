@@ -1123,12 +1123,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1140,12 +1138,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000/api/hyperfleet/v1",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000/api/hyperfleet/v1",
+							Version: "v1",
 						},
 					},
 				},
@@ -1157,12 +1153,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000/api/hyperfleet/v1/",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000/api/hyperfleet/v1/",
+							Version: "v1",
 						},
 					},
 				},
@@ -1174,12 +1168,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "http://other-host:9000/api/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1191,12 +1183,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "https://localhost:8000/api/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1208,12 +1198,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1225,12 +1213,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1242,12 +1228,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1259,12 +1243,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1276,12 +1258,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v2",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v2",
 						},
 					},
 				},
@@ -1293,12 +1273,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "",
 						},
 					},
 				},
@@ -1310,12 +1288,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "",
+							Version: "v1",
 						},
 					},
 				},
@@ -1327,12 +1303,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "clusters/abc123/",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1344,12 +1318,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "/clusters/../clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},
@@ -1361,12 +1333,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "http://localhost:8000/api/hyperfleet/v1/clusters/abc123",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "",
+							Version: "v1",
 						},
 					},
 				},
@@ -1378,12 +1348,10 @@ func TestBuildHyperfleetAPICallURL(t *testing.T) {
 			url:  "clusters/abc123/statuses",
 			execCtx: &ExecutionContext{
 				Config: &config_loader.Config{
-					Spec: config_loader.ConfigSpec{
-						Clients: config_loader.ClientsConfig{
-							HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-								BaseURL: "http://localhost:8000",
-								Version: "v1",
-							},
+					Clients: config_loader.ClientsConfig{
+						HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+							BaseURL: "http://localhost:8000",
+							Version: "v1",
 						},
 					},
 				},

@@ -123,7 +123,9 @@ func TestCELEvaluatorWithNestedData(t *testing.T) {
 	ctx := NewEvaluationContext()
 	ctx.Set("cluster", map[string]interface{}{
 		"status": map[string]interface{}{
-			"phase": "Ready",
+			"conditions": []interface{}{
+				map[string]interface{}{"type": "Ready", "status": "True"},
+			},
 		},
 		"spec": map[string]interface{}{
 			"replicas": 3,
@@ -134,7 +136,7 @@ func TestCELEvaluatorWithNestedData(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test nested field access
-	result, err := evaluator.EvaluateSafe(`cluster.status.phase == "Ready"`)
+	result, err := evaluator.EvaluateSafe(`cluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")`)
 	require.NoError(t, err)
 	assert.False(t, result.HasError())
 	assert.True(t, result.Matched)
@@ -150,7 +152,9 @@ func TestCELEvaluatorEvaluateSafe(t *testing.T) {
 	ctx := NewEvaluationContext()
 	ctx.Set("cluster", map[string]interface{}{
 		"status": map[string]interface{}{
-			"phase": "Ready",
+			"conditions": []interface{}{
+				map[string]interface{}{"type": "Ready", "status": "True"},
+			},
 		},
 	})
 	ctx.Set("nullValue", nil)
@@ -159,7 +163,7 @@ func TestCELEvaluatorEvaluateSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("successful evaluation", func(t *testing.T) {
-		result, err := evaluator.EvaluateSafe(`cluster.status.phase == "Ready"`)
+		result, err := evaluator.EvaluateSafe(`cluster.status.conditions.exists(c, c.type == "Ready" && c.status == "True")`)
 		require.NoError(t, err, "EvaluateSafe should not return error for valid expression")
 		assert.False(t, result.HasError())
 		assert.True(t, result.Matched)
@@ -295,7 +299,9 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 	ctx.Set("resources", map[string]interface{}{
 		"managedCluster": map[string]interface{}{
 			"status": map[string]interface{}{
-				"phase": "Ready",
+				"conditions": []interface{}{
+					map[string]interface{}{"type": "Ready", "status": "True"},
+				},
 			},
 		},
 		"manifestWork": map[string]interface{}{
@@ -322,10 +328,11 @@ func TestCELEvaluatorCustomFunctions(t *testing.T) {
 	})
 
 	t.Run("dig safely reads nested fields", func(t *testing.T) {
-		result, err := evaluator.EvaluateSafe(`dig(resources, "managedCluster.status.phase")`)
+		result, err := evaluator.EvaluateSafe(`dig(resources, "managedCluster.status.conditions")`)
 		require.NoError(t, err)
 		require.False(t, result.HasError())
-		assert.Equal(t, "Ready", result.Value)
+		assert.NotNil(t, result.Value)
+		assert.Equal(t, []interface{}{map[string]interface{}{"type": "Ready", "status": "True"}}, result.Value)
 	})
 
 	t.Run("dig returns null for missing path", func(t *testing.T) {

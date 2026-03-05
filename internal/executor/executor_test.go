@@ -85,8 +85,9 @@ func TestNewExecutor(t *testing.T) {
 
 func TestExecutorBuilder(t *testing.T) {
 	config := &config_loader.Config{
-		Metadata: config_loader.Metadata{
-			Name: "test-adapter",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
 		},
 	}
 
@@ -239,21 +240,20 @@ func TestExecute_ParamExtraction(t *testing.T) {
 	t.Setenv("TEST_VAR", "test-value")
 
 	config := &config_loader.Config{
-		Metadata: config_loader.Metadata{
-			Name: "test-adapter",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
 		},
-		Spec: config_loader.ConfigSpec{
-			Params: []config_loader.Parameter{
-				{
-					Name:     "testParam",
-					Source:   "env.TEST_VAR",
-					Required: true,
-				},
-				{
-					Name:     "eventParam",
-					Source:   "event.id",
-					Required: true,
-				},
+		Params: []config_loader.Parameter{
+			{
+				Name:     "testParam",
+				Source:   "env.TEST_VAR",
+				Required: true,
+			},
+			{
+				Name:     "eventParam",
+				Source:   "event.id",
+				Required: true,
 			},
 		},
 	}
@@ -264,7 +264,6 @@ func TestExecute_ParamExtraction(t *testing.T) {
 		WithTransportClient(k8s_client.NewMockK8sClient()).
 		WithLogger(logger.NewTestLogger()).
 		Build()
-
 	if err != nil {
 		t.Fatalf("unexpected error creating executor: %v", err)
 	}
@@ -348,6 +347,37 @@ func TestParamExtractor(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "extract from config",
+			params: []config_loader.Parameter{
+				{Name: "adapterName", Source: "config.adapter.name"},
+			},
+			expectKey:   "adapterName",
+			expectValue: "test",
+		},
+		{
+			name: "extract nested from config",
+			params: []config_loader.Parameter{
+				{Name: "adapterVersion", Source: "config.adapter.version"},
+			},
+			expectKey:   "adapterVersion",
+			expectValue: "1.0.0",
+		},
+		{
+			name: "use default for missing optional config field",
+			params: []config_loader.Parameter{
+				{Name: "optional", Source: "config.nonexistent", Default: "fallback"},
+			},
+			expectKey:   "optional",
+			expectValue: "fallback",
+		},
+		{
+			name: "fail on missing required config field",
+			params: []config_loader.Parameter{
+				{Name: "required", Source: "config.nonexistent", Required: true},
+			},
+			expectError: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -357,16 +387,17 @@ func TestParamExtractor(t *testing.T) {
 
 			// Create config with test params
 			config := &config_loader.Config{
-				Metadata: config_loader.Metadata{
-					Name: "test",
+				Adapter: config_loader.AdapterInfo{
+					Name:    "test",
+					Version: "1.0.0",
 				},
-				Spec: config_loader.ConfigSpec{
-					Params: tt.params,
-				},
+				Params: tt.params,
 			}
 
 			// Extract params using pure function
-			err := extractConfigParams(config, execCtx)
+			configMap, err := configToMap(config)
+			require.NoError(t, err)
+			err = extractConfigParams(config, execCtx, configMap)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -501,12 +532,11 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &config_loader.Config{
-				Metadata: config_loader.Metadata{
-					Name: "test-adapter",
+				Adapter: config_loader.AdapterInfo{
+					Name:    "test-adapter",
+					Version: "1.0.0",
 				},
-				Spec: config_loader.ConfigSpec{
-					Preconditions: tt.preconditions,
-				},
+				Preconditions: tt.preconditions,
 			}
 
 			exec, err := NewBuilder().
@@ -515,7 +545,6 @@ func TestSequentialExecution_Preconditions(t *testing.T) {
 				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
-
 			if err != nil {
 				t.Fatalf("unexpected error creating executor: %v", err)
 			}
@@ -603,12 +632,11 @@ func TestSequentialExecution_Resources(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &config_loader.Config{
-				Metadata: config_loader.Metadata{
-					Name: "test-adapter",
+				Adapter: config_loader.AdapterInfo{
+					Name:    "test-adapter",
+					Version: "1.0.0",
 				},
-				Spec: config_loader.ConfigSpec{
-					Resources: tt.resources,
-				},
+				Resources: tt.resources,
 			}
 
 			exec, err := NewBuilder().
@@ -617,7 +645,6 @@ func TestSequentialExecution_Resources(t *testing.T) {
 				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
-
 			if err != nil {
 				t.Fatalf("unexpected error creating executor: %v", err)
 			}
@@ -668,12 +695,11 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 			}
 
 			config := &config_loader.Config{
-				Metadata: config_loader.Metadata{
-					Name: "test-adapter",
+				Adapter: config_loader.AdapterInfo{
+					Name:    "test-adapter",
+					Version: "1.0.0",
 				},
-				Spec: config_loader.ConfigSpec{
-					Post: postConfig,
-				},
+				Post: postConfig,
 			}
 
 			mockClient := newMockAPIClient()
@@ -688,7 +714,6 @@ func TestSequentialExecution_PostActions(t *testing.T) {
 				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
-
 			if err != nil {
 				t.Fatalf("unexpected error creating executor: %v", err)
 			}
@@ -744,12 +769,11 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &config_loader.Config{
-				Metadata: config_loader.Metadata{
-					Name: "test-adapter",
+				Adapter: config_loader.AdapterInfo{
+					Name:    "test-adapter",
+					Version: "1.0.0",
 				},
-				Spec: config_loader.ConfigSpec{
-					Preconditions: tt.preconditions,
-				},
+				Preconditions: tt.preconditions,
 			}
 
 			exec, err := NewBuilder().
@@ -758,7 +782,6 @@ func TestSequentialExecution_SkipReasonCapture(t *testing.T) {
 				WithTransportClient(k8s_client.NewMockK8sClient()).
 				WithLogger(logger.NewTestLogger()).
 				Build()
-
 			if err != nil {
 				t.Fatalf("unexpected error creating executor: %v", err)
 			}
@@ -812,8 +835,8 @@ func TestCreateHandler_MetricsRecording(t *testing.T) {
 			recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
 
 			config := &config_loader.Config{
-				Metadata: config_loader.Metadata{Name: "test-adapter"},
-				Spec:     config_loader.ConfigSpec{Preconditions: tt.preconditions},
+				Adapter:       config_loader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
+				Preconditions: tt.preconditions,
 			}
 
 			exec, err := NewBuilder().
@@ -860,11 +883,9 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 	recorder := metrics.NewRecorder("test-adapter", "v0.1.0", registry)
 
 	config := &config_loader.Config{
-		Metadata: config_loader.Metadata{Name: "test-adapter"},
-		Spec: config_loader.ConfigSpec{
-			Params: []config_loader.Parameter{
-				{Name: "required", Source: "env.MISSING_VAR", Required: true},
-			},
+		Adapter: config_loader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
+		Params: []config_loader.Parameter{
+			{Name: "required", Source: "env.MISSING_VAR", Required: true},
 		},
 	}
 
@@ -905,7 +926,7 @@ func TestCreateHandler_MetricsRecording_Failed(t *testing.T) {
 // TestCreateHandler_NilMetricsRecorder verifies handler works without a metrics recorder
 func TestCreateHandler_NilMetricsRecorder(t *testing.T) {
 	config := &config_loader.Config{
-		Metadata: config_loader.Metadata{Name: "test-adapter"},
+		Adapter: config_loader.AdapterInfo{Name: "test-adapter", Version: "v0.1.0"},
 	}
 
 	exec, err := NewBuilder().

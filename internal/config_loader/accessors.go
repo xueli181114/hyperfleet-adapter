@@ -10,8 +10,7 @@ import (
 
 // builtinVariables is the list of built-in variables always available in templates/CEL
 var builtinVariables = []string{
-	"metadata", "metadata.name", "metadata.namespace", "metadata.labels",
-	"now", "date",
+	"adapter", "config", "now", "date",
 }
 
 // BuiltinVariables returns the list of built-in variables always available in templates/CEL
@@ -25,8 +24,8 @@ func BuiltinVariables() []string {
 
 // GetDefinedVariables returns all variables defined in the config that can be used
 // in templates and CEL expressions. This includes:
-// - Built-in variables (metadata, now, date)
-// - Parameters from spec.params
+// - Built-in variables (adapter, now, date)
+// - Parameters from params
 // - Captured variables from preconditions
 // - Post payloads
 // - Resource aliases (resources.<name>)
@@ -42,15 +41,15 @@ func (c *Config) GetDefinedVariables() map[string]bool {
 		vars[b] = true
 	}
 
-	// Parameters from spec.params
-	for _, p := range c.Spec.Params {
+	// Parameters from params
+	for _, p := range c.Params {
 		if p.Name != "" {
 			vars[p.Name] = true
 		}
 	}
 
 	// Variables from precondition captures
-	for _, precond := range c.Spec.Preconditions {
+	for _, precond := range c.Preconditions {
 		for _, capture := range precond.Capture {
 			if capture.Name != "" {
 				vars[capture.Name] = true
@@ -59,8 +58,8 @@ func (c *Config) GetDefinedVariables() map[string]bool {
 	}
 
 	// Post payloads
-	if c.Spec.Post != nil {
-		for _, p := range c.Spec.Post.Payloads {
+	if c.Post != nil {
+		for _, p := range c.Post.Payloads {
 			if p.Name != "" {
 				vars[p.Name] = true
 			}
@@ -68,7 +67,7 @@ func (c *Config) GetDefinedVariables() map[string]bool {
 	}
 
 	// Resource aliases
-	for _, r := range c.Spec.Resources {
+	for _, r := range c.Resources {
 		if r.Name != "" {
 			vars[FieldResources+"."+r.Name] = true
 		}
@@ -77,26 +76,26 @@ func (c *Config) GetDefinedVariables() map[string]bool {
 	return vars
 }
 
-// GetParamByName returns a parameter by name from spec.params, or nil if not found
+// GetParamByName returns a parameter by name from params, or nil if not found
 func (c *Config) GetParamByName(name string) *Parameter {
 	if c == nil {
 		return nil
 	}
-	for i := range c.Spec.Params {
-		if c.Spec.Params[i].Name == name {
-			return &c.Spec.Params[i]
+	for i := range c.Params {
+		if c.Params[i].Name == name {
+			return &c.Params[i]
 		}
 	}
 	return nil
 }
 
-// GetRequiredParams returns all parameters marked as required from spec.params
+// GetRequiredParams returns all parameters marked as required from params
 func (c *Config) GetRequiredParams() []Parameter {
 	if c == nil {
 		return nil
 	}
 	var required []Parameter
-	for _, p := range c.Spec.Params {
+	for _, p := range c.Params {
 		if p.Required {
 			required = append(required, p)
 		}
@@ -109,9 +108,9 @@ func (c *Config) GetResourceByName(name string) *Resource {
 	if c == nil {
 		return nil
 	}
-	for i := range c.Spec.Resources {
-		if c.Spec.Resources[i].Name == name {
-			return &c.Spec.Resources[i]
+	for i := range c.Resources {
+		if c.Resources[i].Name == name {
+			return &c.Resources[i]
 		}
 	}
 	return nil
@@ -122,9 +121,9 @@ func (c *Config) GetPreconditionByName(name string) *Precondition {
 	if c == nil {
 		return nil
 	}
-	for i := range c.Spec.Preconditions {
-		if c.Spec.Preconditions[i].Name == name {
-			return &c.Spec.Preconditions[i]
+	for i := range c.Preconditions {
+		if c.Preconditions[i].Name == name {
+			return &c.Preconditions[i]
 		}
 	}
 	return nil
@@ -132,12 +131,12 @@ func (c *Config) GetPreconditionByName(name string) *Precondition {
 
 // GetPostActionByName returns a post action by name, or nil if not found
 func (c *Config) GetPostActionByName(name string) *PostAction {
-	if c == nil || c.Spec.Post == nil {
+	if c == nil || c.Post == nil {
 		return nil
 	}
-	for i := range c.Spec.Post.PostActions {
-		if c.Spec.Post.PostActions[i].Name == name {
-			return &c.Spec.Post.PostActions[i]
+	for i := range c.Post.PostActions {
+		if c.Post.PostActions[i].Name == name {
+			return &c.Post.PostActions[i]
 		}
 	}
 	return nil
@@ -148,8 +147,8 @@ func (c *Config) ParamNames() []string {
 	if c == nil {
 		return nil
 	}
-	names := make([]string, len(c.Spec.Params))
-	for i, p := range c.Spec.Params {
+	names := make([]string, len(c.Params))
+	for i, p := range c.Params {
 		names[i] = p.Name
 	}
 	return names
@@ -160,8 +159,8 @@ func (c *Config) ResourceNames() []string {
 	if c == nil {
 		return nil
 	}
-	names := make([]string, len(c.Spec.Resources))
-	for i, r := range c.Spec.Resources {
+	names := make([]string, len(c.Resources))
+	for i, r := range c.Resources {
 		names[i] = r.Name
 	}
 	return names

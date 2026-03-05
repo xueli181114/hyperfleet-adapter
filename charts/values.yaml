@@ -9,49 +9,58 @@
 # - option3: from a set of files by setting files
 adapterConfig:
   create: true
-
   # option1: ConfigMap name (if different from default, and set create: false)
   #configMapName: ""
 
   # option2: AdapterConfig YAML (creates adapter-config.yaml key in ConfigMap)
   # yaml:
-  #  apiVersion: hyperfleet.redhat.com/v1alpha1
-  #  kind: AdapterConfig
+  #  adapter:
+  #    name: my-adapter
+  #    version: "0.1.0"
 
   # option3: AdapterConfig YAML files packaged with the chart
   # files:
-    # adapter-config.yaml: examples/adapter-config.yaml
+  # adapter-config.yaml: examples/kubernetes/adapter-config.yaml
 
   # HyperFleet API env vars used by task params
-  hyperfleetApi:
+  hyperfleet_api:
     # Base URL for HyperFleet API (HYPERFLEET_API_BASE_URL)
-    baseUrl: http://hyperfleet-api:8000
+    base_url: http://hyperfleet-api:8000
     # API version (HYPERFLEET_API_VERSION), default: v1
-    version: "v1"
-
+    version: v1
   log:
     level: info
-
 # AdapterTaskConfig (business logic) can be created:
 # - option1: from an existing ConfigMap by setting configMapName
 # - option2: from a YAML file by setting yaml
 # - option3: from a set of files by setting files
 adapterTaskConfig:
   create: true
-
   # option1: ConfigMap name (if different from default, and set create: false)
   #configMapName: ""
 
   # option2: AdapterTaskConfig YAML (creates task-config.yaml key in ConfigMap)
   # yaml:
-  #  apiVersion: hyperfleet.redhat.com/v1alpha1
-  #  kind: AdapterTaskConfig
+  #  params: []
+  #  resources: []
 
   # option3: AdapterTaskConfig YAML files packaged with the chart
   # files:
-    # task-config.yaml: examples/adapter-task-config.yaml
-
-
+  # task-config.yaml: examples/kubernetes/adapter-task-config.yaml
+affinity: {}
+# Override default args
+args:
+  - serve
+  - --config
+  - /etc/adapter/adapter-config.yaml
+  - --task-config
+  - /etc/adapter/task-config.yaml
+autoscaling:
+  enabled: false
+  maxReplicas: 10
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
 # Broker configuration can be created:
 # - option1: from an existing ConfigMap by setting configMapName
 # - option2: from a YAML file by setting yaml
@@ -60,97 +69,115 @@ broker:
   create: true
   # option1
   # configMapName: ""
-  
+
   # option2
   # yaml: ""
 
   # option3: Broker type identifier (googlepubsub, rabbitmq, etc.) - used as label
   # Subscription/topic are used to set adapter broker config overrides
   googlepubsub:
-    projectId: ""
-    subscriptionId: ""
-    topic: ""
-    deadLetterTopic: ""
+    create_subscription_if_missing: false
     # Auto-creation flags (default: false - infrastructure must pre-exist)
     # Set to true for development/testing; use false in production with pre-provisioned resources
-    createTopicIfMissing: false
-    createSubscriptionIfMissing: false
+    create_topic_if_missing: false
+    dead_letter_topic: ""
+    project_id: ""
+    subscription_id: ""
+    topic: ""
   # option3: for rabbitmq
   #rabbitmq:
   # url: ""
   # queue: ""
   # exchange: ""
-  # exchangeType: "topic"
-  # routingKey: ""
-
-
-
-## Kubernetes configuration section
-## ================================
-
-replicaCount: 1
-
-# This is the image for the adapter framework
-image:
-  registry: CHANGE_ME # e.g. quay.io/openshift-hyperfleet
-  repository: CHANGE_ME # e.g. hyperfleet-adapter
-  pullPolicy: Always
-  tag: CHANGE_ME # e.g. "latest"
-
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
-# Deployment configuration
-deploymentLabels: {}
-deploymentAnnotations: {}
-
-# Pod labels (in addition to selector labels)
-podLabels: {}
-
-# Deployment strategy
-strategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxSurge: 1
-    maxUnavailable: 0
-
-# Minimum number of seconds for which a newly created pod should be ready
-minReadySeconds: 0
-
-# The number of old ReplicaSets to retain for rollback
-revisionHistoryLimit: 10
-
-# Container ports for health and metrics endpoints
-containerPorts:
-  - name: http
-    containerPort: 8080
-    protocol: TCP
-  - name: metrics
-    containerPort: 9090
-    protocol: TCP
-
+  # exchange_type: "topic"
+  # routing_key: ""
 # Override default command
 command:
   - /app/adapter
+# Container ports for health and metrics endpoints
+containerPorts:
+  - containerPort: 8080
+    name: http
+    protocol: TCP
+  - containerPort: 9090
+    name: metrics
+    protocol: TCP
+deploymentAnnotations: {}
+# Deployment configuration
+deploymentLabels: {}
+# Environment variables
+env: []
+# - name: ADAPTER_CONFIG_PATH
+#   value: /path/to/custom/config.yaml
+# - name: MY_SECRET
+#   valueFrom:
+#     secretKeyRef:
+#       name: my-secret
+#       key: secret-key
 
-# Override default args
-args:
-  - serve
-  - --config
-  - /etc/adapter/adapter-config.yaml
-  - --task-config
-  - /etc/adapter/task-config.yaml
+# Volume mounts for additional configs
+extraVolumeMounts: []
+# - name: custom-config
+#   mountPath: /etc/custom
+#   readOnly: true
 
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
+# Additional volumes
+extraVolumes: []
+# - name: custom-config
+#   configMap:
+#     name: custom-configmap
 
+fullnameOverride: ""
+# This is the image for the adapter framework
+image:
+  pullPolicy: Always
+  registry: CHANGE_ME # e.g. quay.io/openshift-hyperfleet
+  repository: CHANGE_ME # e.g. hyperfleet-adapter
+  tag: CHANGE_ME # e.g. "latest"
+imagePullSecrets: []
+# Init containers
+initContainers: []
+# - name: init-myservice
+#   image: busybox:1.28
+#   command: ['sh', '-c', 'until nslookup myservice; do echo waiting; sleep 2; done']
+
+# Lifecycle hooks
+lifecycle: {}
+# preStop:
+#   exec:
+#     command:
+#       - /bin/sh
+#       - -c
+#       - sleep 10
+
+# Liveness probe configuration (per HyperFleet health-endpoints standard)
+# Uses K8s defaults: initialDelaySeconds=0, periodSeconds=10, timeoutSeconds=1, failureThreshold=3
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /healthz
+    port: 8080
+# Minimum number of seconds for which a newly created pod should be ready
+minReadySeconds: 0
+nameOverride: ""
+nodeSelector: {}
+podAnnotations: {}
+# Pod Disruption Budget
+# PDB protects availability during voluntary disruptions (node maintenance, cluster upgrades).
+# Set minAvailable OR maxUnavailable (not both). Use maxUnavailable with HPA for smoother scaling.
+podDisruptionBudget:
+  enabled: true
+  # minAvailable: 1
+  maxUnavailable: 1
+  # unhealthyPodEvictionPolicy: IfHealthyBudget
+# Pod labels (in addition to selector labels)
+podLabels: {}
+podSecurityContext:
+  fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
+# Priority class name for pod scheduling
+priorityClassName: ""
 # RBAC permissions are needed if the adapter task needs to interact with CLM cluster
 # e.g. if triggering a job that must update its status to report conditions
 rbac:
@@ -169,39 +196,6 @@ rbac:
   #   - jobs/status
   # Additional custom rules (appended to auto-generated rules)
   rules: []
-
-podAnnotations: {}
-
-podSecurityContext:
-  fsGroup: 65532
-  runAsNonRoot: true
-  runAsUser: 65532
-
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  readOnlyRootFilesystem: true
-  seccompProfile:
-    type: RuntimeDefault
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-# Liveness probe configuration (per HyperFleet health-endpoints standard)
-# Uses K8s defaults: initialDelaySeconds=0, periodSeconds=10, timeoutSeconds=1, failureThreshold=3
-livenessProbe:
-  enabled: true
-  httpGet:
-    path: /healthz
-    port: 8080
-
 # Readiness probe configuration (per HyperFleet health-endpoints standard)
 # Uses K8s defaults: initialDelaySeconds=0, periodSeconds=10, timeoutSeconds=1, failureThreshold=3
 readinessProbe:
@@ -209,6 +203,40 @@ readinessProbe:
   httpGet:
     path: /readyz
     port: 8080
+## Kubernetes configuration section
+## ================================
+replicaCount: 1
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+# The number of old ReplicaSets to retain for rollback
+revisionHistoryLimit: 10
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  # Annotations to add to the service account
+  annotations: {}
+  # Specifies whether a service account should be created
+  create: true
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+# Sidecar containers
+sidecarContainers: []
+# - name: sidecar
+#   image: nginx:1.19
+#   ports:
+#     - containerPort: 80
 
 # Startup probe configuration (useful for slow-starting containers)
 # Uses K8s defaults when enabled
@@ -217,83 +245,12 @@ startupProbe:
   httpGet:
     path: /healthz
     port: 8080
-
-# Lifecycle hooks
-lifecycle: {}
-  # preStop:
-  #   exec:
-  #     command:
-  #       - /bin/sh
-  #       - -c
-  #       - sleep 10
-
-# Priority class name for pod scheduling
-priorityClassName: ""
-
+# Deployment strategy
+strategy:
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+  type: RollingUpdate
 # Termination grace period in seconds
 terminationGracePeriodSeconds: 30
-
-# Init containers
-initContainers: []
-  # - name: init-myservice
-  #   image: busybox:1.28
-  #   command: ['sh', '-c', 'until nslookup myservice; do echo waiting; sleep 2; done']
-
-# Sidecar containers
-sidecarContainers: []
-  # - name: sidecar
-  #   image: nginx:1.19
-  #   ports:
-  #     - containerPort: 80
-
-nodeSelector: {}
-
 tolerations: []
-
-affinity: {}
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
-
-
-# Environment variables
-env: []
-  # - name: ADAPTER_CONFIG_PATH
-  #   value: /path/to/custom/config.yaml
-  # - name: MY_SECRET
-  #   valueFrom:
-  #     secretKeyRef:
-  #       name: my-secret
-  #       key: secret-key
-
-# envFrom for loading entire ConfigMaps/Secrets as environment variables
-envFrom: []
-  # - configMapRef:
-  #     name: my-configmap
-  # - secretRef:
-  #     name: my-secret
-
-# Volume mounts for additional configs
-extraVolumeMounts: []
-  # - name: custom-config
-  #   mountPath: /etc/custom
-  #   readOnly: true
-
-# Additional volumes
-extraVolumes: []
-  # - name: custom-config
-  #   configMap:
-  #     name: custom-configmap
-
-# Pod Disruption Budget
-# PDB protects availability during voluntary disruptions (node maintenance, cluster upgrades).
-# Set minAvailable OR maxUnavailable (not both). Use maxUnavailable with HPA for smoother scaling.
-podDisruptionBudget:
-  enabled: true
-  # minAvailable: 1
-  maxUnavailable: 1
-  # unhealthyPodEvictionPolicy: IfHealthyBudget

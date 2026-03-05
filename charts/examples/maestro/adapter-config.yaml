@@ -1,71 +1,70 @@
 # Example HyperFleet Adapter deployment configuration
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: maestro-example
-  labels:
-    hyperfleet.io/adapter-type: maestro-example
-    hyperfleet.io/component: adapter
-spec:
-  adapter:
-    version: "0.1.0"
+  version: "0.2.0"
 
-  # Log the full merged configuration after load (default: false)
-  debugConfig: true
+# Log the full merged configuration after load (default: false)
+debug_config: true
+log:
+  level: debug
 
-  clients:
-    hyperfleetApi:
-      baseUrl: http://hyperfleet-api:8000
-      version: v1
-      timeout: 2s
-      retryAttempts: 3
-      retryBackoff: exponential
+clients:
+  hyperfleet_api:
+    base_url: http://hyperfleet-api:8000
+    version: v1
+    timeout: 2s
+    retry_attempts: 3
+    retry_backoff: exponential
 
-    broker:
-      subscriptionId: CHANGE_ME
-      topic: CHANGE_ME
+  broker:
+    subscription_id: CHANGE_ME
+    topic: CHANGE_ME
 
-    maestro:
-      grpcServerAddress: "maestro-grpc.maestro.svc.cluster.local:8090"
-      
-      # HTTPS server address for REST API operations (optional)
-      # Environment variable: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS
-      httpServerAddress: "http://maestro.maestro.svc.cluster.local:8000"
-      
-      # Source identifier for CloudEvents routing (must be unique across adapters)
-      # Environment variable: HYPERFLEET_MAESTRO_SOURCE_ID
-      sourceId: "hyperfleet-adapter"
-      
-      # Client identifier (defaults to sourceId if not specified)
-      # Environment variable: HYPERFLEET_MAESTRO_CLIENT_ID
-      clientId: "hyperfleet-adapter-client"
-      insecure: true
+  maestro:
+    grpc_server_address: "maestro-grpc.maestro.svc.cluster.local:8090"
 
-      # HTTP timeout (default: 10s)
-      # Environment variable: HYPERFLEET_MAESTRO_TIMEOUT
-      timeout: "30s"
+    # HTTPS server address for REST API operations (optional)
+    # Environment variable: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS
+    http_server_address: "http://maestro.maestro.svc.cluster.local:8000"
 
-      # gRPC server healthiness check timeout (default: 20s)
-      # Environment variable: HYPERFLEET_MAESTRO_SERVER_HEALTHINESS_TIMEOUT
-      serverHealthinessTimeout: "20s"
-      
-      # Authentication configuration
-      #auth:
-      #  type: "tls"  # TLS certificate-based mTLS
-      #  
-      #  tlsConfig:
-      #    # Certificate paths (mounted from Kubernetes secrets)
-      #    # Environment variable: HYPERFLEET_MAESTRO_CA_FILE
-      #    caFile: "/etc/maestro/certs/grpc/ca.crt"
-      #    
-      #    # Environment variable: HYPERFLEET_MAESTRO_CERT_FILE
-      #    certFile: "/etc/maestro/certs/grpc/client.crt"
-      #    
-      #    # Environment variable: HYPERFLEET_MAESTRO_KEY_FILE
-      #    keyFile: "/etc/maestro/certs/grpc/client.key"
-      #    
-      #    # HTTP API CA certificate (if HTTPS uses a different CA than gRPC)
-      #    # Falls back to caFile when not set
-      #    # Environment variable: HYPERFLEET_MAESTRO_HTTP_CA_FILE
-      #    httpCaFile: "/etc/maestro/certs/https/ca.crt"
+    # Source identifier for CloudEvents routing (must be unique across adapters)
+    # Environment variable: HYPERFLEET_MAESTRO_SOURCE_ID
+    source_id: "hyperfleet-adapter"
 
+    # Client identifier (defaults to source_id if not specified)
+    # Environment variable: HYPERFLEET_MAESTRO_CLIENT_ID
+    client_id: "hyperfleet-adapter-client"
+    insecure: true
+
+    # HTTP timeout (default: 10s)
+    # Environment variable: HYPERFLEET_MAESTRO_TIMEOUT
+    timeout: "30s"
+
+    # gRPC server healthiness check timeout (default: 20s)
+    # Environment variable: HYPERFLEET_MAESTRO_SERVER_HEALTHINESS_TIMEOUT
+    server_healthiness_timeout: "20s"
+
+    # Authentication configuration
+    #auth:
+    #  type: "tls"  # TLS certificate-based mTLS
+    #
+    #  tls_config:
+    #    # gRPC TLS configuration
+    #    # Certificate paths (mounted from Kubernetes secrets)
+    #    # Environment variable: HYPERFLEET_MAESTRO_CA_FILE
+    #    ca_file: "/etc/maestro/certs/grpc/ca.crt"
+    #
+    #    # Environment variable: HYPERFLEET_MAESTRO_CERT_FILE
+    #    cert_file: "/etc/maestro/certs/grpc/client.crt"
+    #
+    #    # Environment variable: HYPERFLEET_MAESTRO_KEY_FILE
+    #    key_file: "/etc/maestro/certs/grpc/client.key"
+    #
+    #    # Server name for TLS verification
+    #    # Environment variable: HYPERFLEET_MAESTRO_SERVER_NAME
+    #    server_name: "maestro-grpc.maestro.svc.cluster.local"
+    #
+    #    # HTTP API TLS configuration (may use different CA than gRPC)
+    #    # If not set, falls back to ca_file for backwards compatibility
+    #    # Environment variable: HYPERFLEET_MAESTRO_HTTP_CA_FILE
+    #    http_ca_file: "/etc/maestro/certs/https/ca.crt"

@@ -8,7 +8,6 @@ This directory contains example configurations for deploying the HyperFleet Adap
 |-----------|-----------|-------------|
 | [`kubernetes/`](./kubernetes/) | Kubernetes only | Creates resources directly in the local cluster using the Kubernetes client |
 | [`maestro/`](./maestro/) | Maestro only | Deploys resources to a remote cluster via Maestro using ManifestWork |
-| [`maestro-kubernetes/`](./maestro-kubernetes/) | Maestro + Kubernetes | Hybrid example combining both transport clients in a single task |
 
 ---
 
@@ -22,6 +21,7 @@ Creates the following resources directly in the local cluster via the Kubernetes
 - An Nginx Deployment in the adapter's own namespace
 
 **Key features demonstrated:**
+
 - Inline manifests and external file references (`ref:`)
 - Preconditions with Hyperfleet API calls and CEL expressions
 - Resource discovery by name and label selectors
@@ -42,27 +42,14 @@ Deploys resources to a remote cluster through Maestro (Open Cluster Management) 
 - Nested resource discovery within the ManifestWork result
 
 **Key features demonstrated:**
+
 - Maestro transport client configuration (gRPC + HTTP)
 - ManifestWork template with external file reference (`ref:`)
-- Resource discovery by name and by label selectors (`nestedDiscoveries`)
+- Resource discovery by name and by label selectors (`nested_discoveries`)
 - Post-processing with CEL expressions on nested ManifestWork status
 - Status reporting back to the Hyperfleet API
 
 See [`maestro/README.md`](./maestro/README.md) for full details.
-
----
-
-### `maestro-kubernetes/` — Hybrid Maestro + Kubernetes
-
-Combines both transport clients in a single adapter task:
-
-- A ManifestWork delivered via Maestro to a remote cluster (Namespace + ConfigMap)
-- A Namespace created directly in the local cluster via the Kubernetes client
-
-**Key features demonstrated:**
-- Using multiple transport clients (`maestro` and `kubernetes`) within the same task
-- Per-resource transport selection via the `transport.client` field
-- Kubernetes transport as the default fallback when `transport` is omitted
 
 ---
 
@@ -75,10 +62,10 @@ All examples share the same broker and image placeholders that must be updated b
 ```yaml
 broker:
   googlepubsub:
-    projectId: CHANGE_ME
-    subscriptionId: CHANGE_ME
+    project_id: CHANGE_ME
+    subscription_id: CHANGE_ME
     topic: CHANGE_ME
-    deadLetterTopic: CHANGE_ME
+    dead_letter_topic: CHANGE_ME
 ```
 
 ### Image
@@ -97,8 +84,8 @@ image:
 helm install <name> ./charts -f charts/examples/<example>/values.yaml \
   --namespace <namespace> \
   --set image.registry=quay.io/<developer-registry> \
-  --set broker.googlepubsub.projectId=<gcp-project> \
-  --set broker.googlepubsub.subscriptionId=<gcp-subscription> \
+  --set broker.googlepubsub.project_id=<gcp-project> \
+  --set broker.googlepubsub.subscription_id=<gcp-subscription> \
   --set broker.googlepubsub.topic=<gcp-topic> \
-  --set broker.googlepubsub.deadLetterTopic=<gcp-dlq-topic>
+  --set broker.googlepubsub.dead_letter_topic=<gcp-dlq-topic>
 ```

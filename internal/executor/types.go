@@ -139,7 +139,7 @@ type ResourceResult struct {
 	// Operation is the operation performed (create, update, recreate, skip)
 	Operation manifest.Operation
 	// OperationReason explains why this operation was performed
-	// Examples: "resource not found", "generation changed from 1 to 2", "generation 1 unchanged", "recreateOnChange=true"
+	// Examples: "resource not found", "generation changed from 1 to 2", "generation 1 unchanged", "recreate_on_change=true"
 	OperationReason string
 	// Error is the error if Status is StatusFailed
 	Error error

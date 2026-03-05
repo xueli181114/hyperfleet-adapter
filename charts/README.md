@@ -62,15 +62,15 @@ Beware of template resolution within files referenced in an `AdapterTaskConfig`.
 | `adapterConfig.configMapName` | AdapterConfig ConfigMap name | `""` |
 | `adapterConfig.yaml` | AdapterConfig YAML content | `""` |
 | `adapterConfig.files` | AdapterConfig YAML files packaged with chart | `{}` |
-| `adapterConfig.hyperfleetApi.baseUrl` | HyperFleet API base URL (HYPERFLEET_API_BASE_URL) | `"http://hyperfleet-api:8000"` |
-| `adapterConfig.hyperfleetApi.version` | API version (HYPERFLEET_API_VERSION) | `"v1"` |
+| `adapterConfig.hyperfleet_api.base_url` | HyperFleet API base URL (HYPERFLEET_API_BASE_URL) | `"http://hyperfleet-api:8000"` |
+| `adapterConfig.hyperfleet_api.version` | API version (HYPERFLEET_API_VERSION) | `"v1"` |
 | `adapterConfig.log.level` | Adapter log level | `"info"` |
 | `adapterTaskConfig.create` | Enable AdapterTaskConfig ConfigMap | `true` |
 | `adapterTaskConfig.configMapName` | AdapterTaskConfig ConfigMap name | `""` |
 | `adapterTaskConfig.yaml` | AdapterTaskConfig YAML content | `""` |
 | `adapterTaskConfig.files` | AdapterTaskConfig YAML files packaged with chart | `{}` |
 
-AdapterConfig supports `spec.debugConfig` to log the full merged configuration after load
+AdapterConfig supports `debug_config` to log the full merged configuration after load
 (default: `false`). It can also be set via `HYPERFLEET_DEBUG_CONFIG` or `--debug-config`.
 
 ### Broker Configuration
@@ -91,8 +91,8 @@ The `ConfigMap` will be:
 |-----------|-------------|---------|
 | `broker.create` | Create broker ConfigMap | `true` |
 | `broker.configMapName` | Broker ConfigMap name | `""` |
-| `broker.googlepubsub.projectId` |   Google Cloud project ID | `""` |
-| `broker.googlepubsub.subscriptionId` | Subscription ID override (HYPERFLEET_BROKER_SUBSCRIPTION_ID) | `""` |
+| `broker.googlepubsub.project_id` |   Google Cloud project ID | `""` |
+| `broker.googlepubsub.subscription_id` | Subscription ID override (HYPERFLEET_BROKER_SUBSCRIPTION_ID) | `""` |
 | `broker.googlepubsub.topic` | Topic name override (HYPERFLEET_BROKER_TOPIC) | `""` |
 | `broker.yaml` | Broker YAML config content | `""` |
 
@@ -149,8 +149,8 @@ helm install hyperfleet-adapter ./charts/ \
   -f ./charts/examples/values.yaml \
   --set image.registry=quay.io/my-quay-registry \
   --set broker.create=true \
-  --set broker.googlepubsub.projectId=my-gcp-project \
-  --set broker.googlepubsub.subscriptionId=my-subscription \
+  --set broker.googlepubsub.project_id=my-gcp-project \
+  --set broker.googlepubsub.subscription_id=my-subscription \
   --set broker.googlepubsub.topic=my-topic
 ```
 
@@ -160,10 +160,10 @@ The deployment sets these environment variables automatically:
 
 | Variable | Value | Condition |
 |----------|-------|-----------|
-| `HYPERFLEET_API_BASE_URL` | From `adapterConfig.hyperfleetApi.baseUrl` | When `adapterConfig.hyperfleetApi.baseUrl` is set |
-| `HYPERFLEET_API_VERSION` | From `adapterConfig.hyperfleetApi.version` | Always (default: v1) |
+| `HYPERFLEET_API_BASE_URL` | From `adapterConfig.hyperfleet_api.base_url` | When `adapterConfig.hyperfleet_api.base_url` is set |
+| `HYPERFLEET_API_VERSION` | From `adapterConfig.hyperfleet_api.version` | Always (default: v1) |
 | `BROKER_CONFIG_FILE` | `/etc/broker/broker.yaml` | When `broker.yaml` is set |
-| `HYPERFLEET_BROKER_SUBSCRIPTION_ID` | From values | When `broker.googlepubsub.subscriptionId` is set |
+| `HYPERFLEET_BROKER_SUBSCRIPTION_ID` | From values | When `broker.googlepubsub.subscription_id` is set |
 | `HYPERFLEET_BROKER_TOPIC` | From values | When `broker.googlepubsub.topic` is set |
 
 ## GCP Workload Identity Setup

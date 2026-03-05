@@ -1,143 +1,116 @@
 # HyperFleet Adapter Task Configuration for testing
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: example-adapter
-  labels:
-    hyperfleet.io/adapter-type: example
-    hyperfleet.io/component: adapter
-
-spec:
-  # Parameters with all required variables
-  params:
-    - name: "hyperfleetApiBaseUrl"
-      source: "env.HYPERFLEET_API_BASE_URL"
-      type: "string"
-
-    - name: "hyperfleetApiVersion"
-      source: "env.HYPERFLEET_API_VERSION"
-      type: "string"
-      default: "v1"
-
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
-
-  # Preconditions with valid operators and CEL expressions
-  preconditions:
-    - name: "clusterStatus"
-      apiCall:
-        method: "GET"
-        url: "/clusters/{{ .clusterId }}"
-        timeout: 10s
-        retryAttempts: 3
-        retryBackoff: "exponential"
-      capture:
-        - name: "clusterName"
-          field: "metadata.name"
-        - name: "readyConditionStatus"
-          expression: |
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].status
-              : "False"
-        - name: "generation"
-          field: "generation"
-      # Structured conditions with valid operators
-      conditions:
-        - field: "readyConditionStatus"
-          operator: "equals"
-          value: "False"
-
-  # Resources
-  resources:
-    - name: "clusterNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "{{ .clusterId | lower }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/managed-by: "hyperfleet-adapter"
-          annotations:
-            hyperfleet.io/generation: "{{ .generation }}"
-      discovery:
-        namespace: "*"
-        byName: "{{ .clusterId | lower }}"
-
-    - name: "clusterConfigMap"
-      manifest:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "cluster-{{ .clusterId }}-config"
-          namespace: "{{ .clusterId | lower }}"
-          annotations:
-            hyperfleet.io/generation: "{{ .generation }}"
-        data:
-          cluster_id: "{{ .clusterId }}"
-      discovery:
-        namespace: "{{ .clusterId | lower }}"
-        byName: "cluster-{{ .clusterId }}-config"
-
-  # Post configuration
-  post:
-    payloads:
-      - name: "clusterStatusPayload"
-        build:
-          adapter: "{{ .metadata.name }}"
-          conditions:
-            # Applied: Job successfully created
-            - type: "Applied"
-              status:
-                expression: |
-                  has(resources.clusterConfigMap.spec) ? "True" : "False"
-              reason:
-                expression: |
-                  has(resources.clusterConfigMap.spec)
-                    ? "JobApplied"
-                    : "JobPending"
-              message:
-                expression: |
-                  has(resources.clusterConfigMap)
-                    ? "clusterConfigMap manifest applied successfully"
-                    : "clusterConfigMap is pending to be applied"
-            # Available: Check job status conditions
-            - type: "Available"
-              status:
-                expression: |
-                  has(resources.clusterConfigMap.metadata.resourceVersion) ? "True" : "False"
-              reason:
-                expression: |
-                  has(resources.clusterConfigMap.metadata.resourceVersion) ? "ConfigMapAvailable" : "ConfigMapPending"
-              message:
-                expression: |
+# Parameters with all required variables
+params:
+  - name: clusterId
+    required: true
+    source: event.id
+    type: string
+# Preconditions with valid operators and CEL expressions
+preconditions:
+  - api_call:
+      method: GET
+      retry_attempts: 3
+      retry_backoff: exponential
+      timeout: 10s
+      url: /clusters/{{ .clusterId }}
+    capture:
+      - field: name
+        name: clusterName
+      - expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status
+            : "False"
+        name: readyConditionStatus
+      - field: generation
+        name: generation
+    # Structured conditions with valid operators
+    conditions:
+      - field: readyConditionStatus
+        operator: equals
+        value: "False"
+    name: clusterStatus
+# Resources
+resources:
+  - discovery:
+      by_name: '{{ .clusterId | lower }}'
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        annotations:
+          hyperfleet.io/generation: '{{ .generation }}'
+        labels:
+          hyperfleet.io/cluster-id: '{{ .clusterId }}'
+          hyperfleet.io/managed-by: hyperfleet-adapter
+        name: '{{ .clusterId | lower }}'
+    name: clusterNamespace
+  - discovery:
+      by_name: cluster-{{ .clusterId }}-config
+      namespace: '{{ .clusterId | lower }}'
+    manifest:
+      apiVersion: v1
+      data:
+        cluster_id: '{{ .clusterId }}'
+      kind: ConfigMap
+      metadata:
+        annotations:
+          hyperfleet.io/generation: '{{ .generation }}'
+        name: cluster-{{ .clusterId }}-config
+        namespace: '{{ .clusterId | lower }}'
+    name: clusterConfigMap
+# Post configuration
+post:
+  payloads:
+    - build:
+        adapter: '{{ .adapter.name }}'
+        conditions:
+          # Applied: Job successfully created
+          - type: Applied
+            message:
+              expression: |
+                has(resources.clusterConfigMap)
+                  ? "clusterConfigMap manifest applied successfully"
+                  : "clusterConfigMap is pending to be applied"
+            reason:
+              expression: |
                   has(resources.clusterConfigMap.metadata.resourceVersion)
-                    ? "clusterConfigMap has been created"
-                    : "clusterConfigMap is not yet available"
-            # Health: Adapter execution status (runtime)
-            - type: "Health"
-              status:
-                expression: |
-                  adapter.?executionStatus.orValue("") == "success" ? "True" : "False"
-              reason:
-                expression: |
-                  adapter.?errorReason.orValue("") != "" ? adapter.?errorReason.orValue("") : "Healthy"
-              message:
-                expression: |
-                  adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations in progress or completed successfully"
-          # Event generation ID metadata field needs to use expression to avoid interpolation issues
-          observed_generation:
-            expression: "generation"
-          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-
-    postActions:
-      - name: "updateStatus"
-        when:
-          expression: |
-            adapter.executionStatus == "success"
-        apiCall:
-          method: "POST"
-          url: "/clusters/{{ .clusterId }}/statuses"
-          body: "{{ .clusterStatusPayload }}"
+                  ? "ConfigMapApplied"
+                  : "ConfigMapPending"
+            status:
+              expression: |
+                has(resources.clusterConfigMap.metadata.resourceVersion) ? "True" : "False"
+          # Available: Check job status conditions
+          - type: Available
+            message:
+              expression: |
+                has(resources.clusterConfigMap.metadata.resourceVersion)
+                  ? "clusterConfigMap has been created"
+                  : "clusterConfigMap is not yet available"
+            reason:
+              expression: |
+                has(resources.clusterConfigMap.metadata.resourceVersion) ? "ConfigMapAvailable" : "ConfigMapPending"
+            status:
+              expression: |
+                has(resources.clusterConfigMap.metadata.resourceVersion) ? "True" : "False"
+          # Health: Adapter execution status (runtime)
+          - type: Health
+            message:
+              expression: |
+                adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations in progress or completed successfully"
+            reason:
+              expression: |
+                adapter.?errorReason.orValue("") != "" ? adapter.?errorReason.orValue("") : "Healthy"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success" ? "True" : "False"
+        # Event generation ID metadata field needs to use expression to avoid interpolation issues
+        observed_generation:
+          expression: generation
+        observed_time: '{{ now | date "2006-01-02T15:04:05Z07:00" }}'
+      name: clusterStatusPayload
+  post_actions:
+    - api_call:
+        body: '{{ .clusterStatusPayload }}'
+        method: POST
+        url: /clusters/{{ .clusterId }}/statuses
+      name: updateStatus

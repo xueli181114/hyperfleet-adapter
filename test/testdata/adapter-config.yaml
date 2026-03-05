@@ -1,20 +1,13 @@
 # HyperFleet Adapter Deployment Configuration for testing
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-  labels:
-    hyperfleet.io/component: adapter
+  version: "0.1.0"
 
-spec:
-  adapter:
-    version: "0.1.0"
+clients:
+  hyperfleet_api:
+    timeout: 2s
+    retry_attempts: 3
+    retry_backoff: exponential
 
-  clients:
-    hyperfleetApi:
-      timeout: 2s
-      retryAttempts: 3
-      retryBackoff: exponential
-
-    kubernetes:
-      apiVersion: "v1"
+  kubernetes:
+    api_version: "v1"

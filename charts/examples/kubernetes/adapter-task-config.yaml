@@ -1,227 +1,221 @@
 # Example HyperFleet Adapter task configuration
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: kubernetes-example
-  labels:
-    hyperfleet.io/adapter-type: kubernetes-example
-    hyperfleet.io/component: adapter
-spec:
-  # Parameters with all required variables
-  params:
-    - name: "hyperfleetApiBaseUrl"
-      source: "env.HYPERFLEET_API_BASE_URL"
-      type: "string"
-      required: true
+# Parameters with all required variables
+params:
 
-    - name: "hyperfleetApiVersion"
-      source: "env.HYPERFLEET_API_VERSION"
-      type: "string"
-      default: "v1"
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
 
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
+  - name: "namespace"
+    source: "env.NAMESPACE"
+    type: "string"
+    required: true
 
-    - name: "generation"
-      source: "event.generation"
-      type: "int"
-      required: true
+  - name: "serviceAccountName"
+    source: "env.SERVICE_ACCOUNT"
+    type: "string"
+    required: true
 
-    - name: "namespace"
-      source: "env.NAMESPACE"
-      type: "string"
-      required: true
+  - name: "simulateResult"
+    source: "env.SIMULATE_RESULT"
+    type: "string"
+    required: true
 
-    - name: "serviceAccountName"
-      source: "env.SERVICE_ACCOUNT"
-      type: "string"
-      required: true
+# Preconditions with valid operators and CEL expressions
+preconditions:
+  - name: "clusterStatus"
+    api_call:
+      method: "GET"
+      url: "/clusters/{{ .clusterId }}"
+      timeout: 10s
+      retry_attempts: 3
+      retry_backoff: "exponential"
+    capture:
+      - name: "clusterName"
+        field: "name"
+      - name: "generation"
+        field: "generation"
+      - name: "readyConditionStatus"
+        expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status
+            : "False"
+    # Structured conditions with valid operators
+    conditions:
+      - field: "readyConditionStatus"
+        operator: "equals"
+        value: "False"
 
-    - name: "simulateResult"
-      source: "env.SIMULATE_RESULT"
-      type: "string"
-      required: true
+  - name: "validationCheck"
+    # Valid CEL expression
+    expression: |
+      readyConditionStatus == "False"
 
-  # Preconditions with valid operators and CEL expressions
-  preconditions:
-    - name: "clusterStatus"
-      apiCall:
-        method: "GET"
-        url: "/clusters/{{ .clusterId }}"
-        timeout: 10s
-        retryAttempts: 3
-        retryBackoff: "exponential"
-      capture:
-        - name: "clusterName"
-          field: "name"
-        - name: "generation"
-          field: "generation"
-        - name: "readyConditionStatus"
-          expression: |
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].status
-              : "False"
-      # Structured conditions with valid operators
-      conditions:
-        - field: "readyConditionStatus"
-          operator: "equals"
-          value: "False"
+# Resources with valid K8s manifests
+resources:
+  - name: "clusterNamespace"
+    transport:
+      client: "kubernetes"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ .clusterId }}"
+        labels:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/cluster-name: "{{ .clusterName }}"
+        annotations:
+          hyperfleet.io/generation: "{{ .generation }}"
+    discovery:
+      by_selectors:
+        label_selector:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/cluster-name: "{{ .clusterName }}"
 
-    - name: "validationCheck"
-      # Valid CEL expression
-      expression: |
-        readyConditionStatus == "False"
+  #  the following configuration is for a job that will be created in the cluster
+  # in the namespace created above
+  # it will require a service account to be created in that namespace as well as a role and rolebinding
+  - name: "jobServiceAccount"
+    transport:
+      client: "kubernetes"
+    manifest:
+      ref: "/etc/adapter/job-serviceaccount.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          hyperfleet.io/resource-type: "service-account"
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
 
-  # Resources with valid K8s manifests
-  resources:
-    - name: "clusterNamespace"
-      transport:
-        client: "kubernetes"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "{{ .clusterId }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/cluster-name: "{{ .clusterName }}"
-          annotations:
-            hyperfleet.io/generation: "{{ .generation }}"
-      discovery:
-        bySelectors:
-          labelSelector:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/cluster-name: "{{ .clusterName }}"
+  - name: "job_role"
+    transport:
+      client: "kubernetes"
+    manifest:
+      ref: "/etc/adapter/job-role.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/resource-type: "role"
 
-    #  the following configuration is for a job that will be created in the cluster
-    # in the namespace created above
-    # it will require a service account to be created in that namespace as well as a role and rolebinding
-    - name: "jobServiceAccount"
-      transport:
-        client: "kubernetes"
-      manifest:
-        ref: "/etc/adapter/job-serviceaccount.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            hyperfleet.io/resource-type: "service-account"
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+  - name: "job_rolebinding"
+    transport:
+      client: "kubernetes"
+    manifest:
+      ref: "/etc/adapter/job-rolebinding.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/resource-type: "role-binding"
 
-    - name: "job_role"
-      transport:
-        client: "kubernetes"
-      manifest:
-        ref: "/etc/adapter/job-role.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/resource-type: "role"
+  - name: "jobNamespace"
+    transport:
+      client: "kubernetes"
+    manifest:
+      ref: "/etc/adapter/job.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/resource-type: "job"
 
-    - name: "job_rolebinding"
-      transport:
-        client: "kubernetes"
-      manifest:
-        ref: "/etc/adapter/job-rolebinding.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/resource-type: "role-binding"
+  # the following configuration is for a deployment that will be created in the cluster
+  # in the same namespace as the adapter
+  # and using the same service account as the adapter
 
-    - name: "jobNamespace"
-      transport:
-        client: "kubernetes"
-      manifest:
-        ref: "/etc/adapter/job.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/resource-type: "job"
+  - name: "deploymentNamespace"
+    transport:
+      client: "kubernetes"
+    manifest:
+      ref: "/etc/adapter/deployment.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          hyperfleet.io/resource-type: "deployment"
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
 
-    # the following configuration is for a deployment that will be created in the cluster
-    # in the same namespace as the adapter
-    # and using the same service account as the adapter
+# Post-processing with valid CEL expressions
+# This example contains multiple resources, we will only report on the conditions of the jobNamespace not to overcomplicate the example
+post:
+  payloads:
+    - name: "clusterStatusPayload"
+      build:
+        adapter: "{{ .adapter.name }}"
+        conditions:
+          # Applied: Job successfully created
+          - type: "Applied"
+            status:
+              expression: |
+                has(resources.jobNamespace) ? "True" : "False"
+            reason:
+              expression: |
+                has(resources.jobNamespace)
+                  ? "JobApplied"
+                  : "JobPending"
+            message:
+              expression: |
+                has(resources.jobNamespace)
+                  ? "jobNamespace manifest applied successfully"
+                  : "jobNamespace is pending to be applied"
+          # Available: Check job status conditions
+          - type: "Available"
+            status:
+              expression: |
+                has(resources.jobNamespace) ?
+                 ( resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
+                  ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].status : "Unknown")
+                 : "Unknown"
+            reason:
+              expression: |
+                resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
+                  ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].reason
+                  : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "ValidationFailed"
+                       : resources.?jobNamespace.?status.hasValue() ? "ValidationInProgress" : "ValidationPending"
+            message:
+              expression: |
+                resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
+                  ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].message
+                  : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "Validation failed"
+                       : resources.?jobNamespace.?status.hasValue() ? "Validation in progress" : "Validation is pending"
+          # Health: Adapter execution status (runtime)
+          - type: "Health"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success"
+                  && !adapter.?resourcesSkipped.orValue(false)
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "ResourcesSkipped"
+                  : "Healthy"
+            message:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "Adapter failed at phase ["
+                    + adapter.?executionError.?phase.orValue("unknown")
+                    + "] step ["
+                    + adapter.?executionError.?step.orValue("unknown")
+                    + "]: "
+                    + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
+                  : "Adapter execution completed successfully"
+        # Event generation ID metadata field needs to use expression to avoid interpolation issues
+        observed_generation:
+          expression: "generation"
+        observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
-    - name: "deploymentNamespace"
-      transport:
-        client: "kubernetes"
-      manifest:
-        ref: "/etc/adapter/deployment.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            hyperfleet.io/resource-type: "deployment"
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-
-  # Post-processing with valid CEL expressions
-  # This example contains multiple resources, we will only report on the conditions of the jobNamespace not to overcomplicate the example
-  post:
-    payloads:
-      - name: "clusterStatusPayload"
-        build:
-          adapter: "{{ .metadata.name }}"
-          conditions:
-            # Applied: Job successfully created
-            - type: "Applied"
-              status:
-                expression: |
-                  has(resources.jobNamespace) ? "True" : "False"
-              reason:
-                expression: |
-                  has(resources.jobNamespace)
-                    ? "JobApplied"
-                    : "JobPending"
-              message:
-                expression: |
-                  has(resources.jobNamespace)
-                    ? "jobNamespace manifest applied successfully"
-                    : "jobNamespace is pending to be applied"
-            # Available: Check job status conditions
-            - type: "Available"
-              status:
-                expression: |
-                  has(resources.jobNamespace) ?
-                   ( resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
-                    ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].status : "Unknown")
-                   : "Unknown"
-              reason:
-                expression: |
-                  resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
-                    ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].reason
-                    : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "ValidationFailed"
-                         : resources.?jobNamespace.?status.hasValue() ? "ValidationInProgress" : "ValidationPending"
-              message:
-                expression: |
-                  resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Available")
-                    ? resources.jobNamespace.status.conditions.filter(c, c.type == "Available")[0].message
-                    : resources.?jobNamespace.?status.?conditions.orValue([]).exists(c, c.type == "Failed") ? "Validation failed"
-                         : resources.?jobNamespace.?status.hasValue() ? "Validation in progress" : "Validation is pending"
-            # Health: Adapter execution status (runtime)
-            - type: "Health"
-              status:
-                expression: |
-                  adapter.?executionStatus.orValue("") == "success" ? "True" : "False"
-              reason:
-                expression: |
-                  adapter.?errorReason.orValue("") != "" ? adapter.?errorReason.orValue("") : "Healthy"
-              message:
-                expression: |
-                  adapter.?errorMessage.orValue("") != "" ? adapter.?errorMessage.orValue("") : "All adapter operations in progress or completed successfully"
-          # Event generation ID metadata field needs to use expression to avoid interpolation issues
-          observed_generation:
-            expression: "generation"
-          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-
-    postActions:
-      - name: "reportClusterStatus"
-        apiCall:
-          method: "POST"
-          url: "/clusters/{{ .clusterId }}/statuses"
-          headers:
-            - name: "Content-Type"
-              value: "application/json"
-          body: "{{ .clusterStatusPayload }}"
+  post_actions:
+    - name: "reportClusterStatus"
+      api_call:
+        method: "POST"
+        url: "/clusters/{{ .clusterId }}/statuses"
+        headers:
+          - name: "Content-Type"
+            value: "application/json"
+        body: "{{ .clusterStatusPayload }}"

@@ -119,7 +119,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 2: Preconditions
 	result.CurrentPhase = PhasePreconditions
-	preconditions := e.config.Config.Spec.Preconditions
+	preconditions := e.config.Config.Preconditions
 	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(preconditions))
 	precondOutcome := e.precondExecutor.ExecuteAll(ctx, preconditions, execCtx)
 	result.PreconditionResults = precondOutcome.Results
@@ -149,7 +149,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 3: Resources (skip if preconditions not met or previous error)
 	result.CurrentPhase = PhaseResources
-	resources := e.config.Config.Spec.Resources
+	resources := e.config.Config.Resources
 	e.log.Infof(ctx, "Phase %s: RUNNING - %d configured", result.CurrentPhase, len(resources))
 	if !result.ResourcesSkipped {
 		resourceResults, err := e.resourceExecutor.ExecuteAll(ctx, resources, execCtx)
@@ -172,7 +172,7 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 	// Phase 4: Post Actions (always execute for error reporting)
 	result.CurrentPhase = PhasePostActions
-	postConfig := e.config.Config.Spec.Post
+	postConfig := e.config.Config.Post
 	postActionCount := 0
 	if postConfig != nil {
 		postActionCount = len(postConfig.PostActions)
@@ -211,15 +211,23 @@ func (e *Executor) Execute(ctx context.Context, data interface{}) *ExecutionResu
 
 // executeParamExtraction extracts parameters from the event and environment
 func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
-	// Extract configured parameters
-	if err := extractConfigParams(e.config.Config, execCtx); err != nil {
-		return err
+	configMap, err := configToMap(e.config.Config)
+	if err != nil {
+		return NewExecutorError(PhaseParamExtraction, "config", "failed to marshal config", err)
 	}
 
-	// Add metadata params
-	addMetadataParams(e.config.Config, execCtx)
+	// Use a redacted config map for template-accessible params to avoid exposing sensitive
+	// values (e.g. TLS cert paths) in rendered manifests or logs.
+	redactedMap, err := configToMap(e.config.Config.Redacted())
+	if err != nil {
+		return NewExecutorError(PhaseParamExtraction, "config", "failed to marshal redacted config", err)
+	}
 
-	return nil
+	addAdapterParams(e.config.Config, execCtx, redactedMap)
+
+	// config.* param sources resolve against the real (unredacted) config so that
+	// sensitive fields like cert paths can still be explicitly extracted when needed.
+	return extractConfigParams(e.config.Config, execCtx, configMap)
 }
 
 // startTracedExecution creates an OTel span and adds trace context to logs.
@@ -230,7 +238,7 @@ func (e *Executor) executeParamExtraction(execCtx *ExecutionContext) error {
 //   - Adds trace_id and span_id to logger context (for log correlation)
 //   - The trace context is automatically propagated to outgoing HTTP requests
 func (e *Executor) startTracedExecution(ctx context.Context) (context.Context, trace.Span) {
-	componentName := e.config.Config.Metadata.Name
+	componentName := e.config.Config.Adapter.Name
 	ctx, span := otel.Tracer(componentName).Start(ctx, "Execute")
 
 	// Add trace_id and span_id to logger context for log correlation

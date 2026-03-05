@@ -31,11 +31,11 @@ data:
     broker:
       type: googlepubsub
       googlepubsub:
-        project_id: {{ .Values.broker.googlepubsub.projectId | quote }}
+        project_id: {{ .Values.broker.googlepubsub.project_id | quote }}
         topic: {{ .Values.broker.googlepubsub.topic | quote }}
-        deadLetterTopic: {{ .Values.broker.googlepubsub.deadLetterTopic | quote }}
-        create_topic_if_missing: {{ .Values.broker.googlepubsub.createTopicIfMissing }}
-        create_subscription_if_missing: {{ .Values.broker.googlepubsub.createSubscriptionIfMissing }}
+        dead_letter_topic: {{ .Values.broker.googlepubsub.dead_letter_topic | quote }}
+        create_topic_if_missing: {{ .Values.broker.googlepubsub.create_topic_if_missing }}
+        create_subscription_if_missing: {{ .Values.broker.googlepubsub.create_subscription_if_missing }}
       subscriber:
         parallelism: 1
   {{- else if eq $brokerType "rabbitmq" }}
@@ -47,8 +47,8 @@ data:
         url: {{ .Values.broker.rabbitmq.url | quote }}
         queue: {{ .Values.broker.rabbitmq.queue | quote }}
         exchange: {{ .Values.broker.rabbitmq.exchange | quote }}
-        routing_key: {{ .Values.broker.rabbitmq.routingKey | quote }}
-        exchange_type: {{ .Values.broker.rabbitmq.exchangeType | default "topic" | quote }}
+        routing_key: {{ .Values.broker.rabbitmq.routing_key | quote }}
+        exchange_type: {{ .Values.broker.rabbitmq.exchange_type | default "topic" | quote }}
   {{- end }}
   {{- end }}
 {{- end }}

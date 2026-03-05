@@ -20,7 +20,7 @@ const (
 	MaestroImage = "quay.io/redhat-user-workloads/maestro-rhtap-tenant/maestro/maestro:latest"
 
 	// PostgresImage is the PostgreSQL container image
-	PostgresImage = "docker.io/library/postgres:14.2"
+	PostgresImage = "quay.io/sclorg/postgresql-15-c9s:latest"
 
 	// Default ports
 	PostgresPort      = "5432/tcp"

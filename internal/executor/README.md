@@ -173,7 +173,7 @@ Executes preconditions with optional API calls and condition evaluation:
 ```yaml
 preconditions:
   - name: "checkClusterStatus"
-    apiCall:
+    api_call:
       method: "GET"
       url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}"
     capture:
@@ -237,7 +237,7 @@ Preconditions have **two different data scopes** for capture and conditions:
 ```yaml
 preconditions:
   - name: "getCluster"
-    apiCall:
+    api_call:
       url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}"
       method: GET
     # No need to capture everything - conditions can access full response
@@ -298,15 +298,15 @@ resources:
       metadata:
         name: "cluster-{{ .clusterId }}"
     discovery:
-      byName: "cluster-{{ .clusterId }}"
-  
+      by_name: "cluster-{{ .clusterId }}"
+
   - name: "externalTemplate"
     manifest:
       ref: "templates/deployment.yaml"
     discovery:
       namespace: "cluster-{{ .clusterId }}"
-      bySelectors:
-        labelSelector:
+      by_selectors:
+        label_selector:
           app: "myapp"
 ```
 
@@ -318,7 +318,7 @@ resources:
 |-----------|------|-------------|
 | `create` | Resource doesn't exist | Creates new resource |
 | `update` | Resource exists | Updates existing resource |
-| `recreate` | `recreateOnChange: true` | Deletes and recreates |
+| `recreate` | `recreate_on_change: true` | Deletes and recreates |
 | `skip` | No changes needed | No operation performed |
 | `dry_run` | Dry run mode | Simulated operation |
 
@@ -341,9 +341,9 @@ post:
           field: "adapter.errorMessage"   # JSONPath extraction
           default: ""                     # Fallback if field not found
   
-  postActions:
+  post_actions:
     - name: "reportStatus"
-      apiCall:
+      api_call:
         method: "POST"
         url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"
@@ -442,9 +442,9 @@ post:
           expression: "adapter.skipReason != '' ? adapter.skipReason : (adapter.errorMessage != '' ? adapter.errorMessage : 'Success')"
           default: "No message"
         observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-  postActions:
+  post_actions:
     - name: "reportStatus"
-      apiCall:
+      api_call:
         method: "POST"
         url: "{{ .apiBaseUrl }}/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"
@@ -477,7 +477,7 @@ url: "{{ .apiBaseUrl }}/api/{{ .apiVersion }}/clusters/{{ .clusterId }}"
 |--------|---------|
 | Extracted params | `{{ .clusterId }}` |
 | Captured fields | `{{ .readyConditionStatus }}` |
-| Adapter metadata | `{{ .metadata.name }}` |
+| Adapter metadata | `{{ .adapter.name }}` |
 | Event metadata | `{{ .eventMetadata.id }}` |
 
 ## Integration

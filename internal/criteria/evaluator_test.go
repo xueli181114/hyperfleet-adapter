@@ -39,8 +39,8 @@ func TestEvaluationContextGetField(t *testing.T) {
 	ctx := NewEvaluationContext()
 	ctx.Set("cluster", map[string]interface{}{
 		"status": map[string]interface{}{
-			"phase": "Ready",
 			"conditions": []interface{}{
+				map[string]interface{}{"type": "Ready", "status": "True"},
 				map[string]interface{}{"type": "Available", "status": "True"},
 			},
 		},
@@ -57,8 +57,11 @@ func TestEvaluationContextGetField(t *testing.T) {
 	}{
 		{
 			name: "simple nested field",
-			path: "cluster.status.phase",
-			want: "Ready",
+			path: "cluster.status.conditions",
+			want: []interface{}{
+				map[string]interface{}{"type": "Ready", "status": "True"},
+				map[string]interface{}{"type": "Available", "status": "True"},
+			},
 		},
 		{
 			name: "deeply nested field",
@@ -749,7 +752,7 @@ func TestExtractFieldJSONPath(t *testing.T) {
 				},
 			},
 		},
-		"metadata": map[string]interface{}{
+		"adapter": map[string]interface{}{
 			"name": "test-resource",
 		},
 	}
@@ -792,7 +795,7 @@ func TestExtractFieldJSONPath(t *testing.T) {
 		},
 		{
 			name: "Simple path still works",
-			path: "metadata.name",
+			path: "adapter.name",
 			want: "test-resource",
 		},
 	}
@@ -917,11 +920,11 @@ func TestNewEvaluatorErrorsWithNilParams(t *testing.T) {
 func TestExtractValue(t *testing.T) {
 	ctx := NewEvaluationContext()
 	ctx.Set("cluster", map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name": "test-cluster",
-		},
+		"name": "test-cluster",
 		"status": map[string]interface{}{
-			"phase": "Ready",
+			"conditions": []interface{}{
+				map[string]interface{}{"type": "Ready", "status": "True"},
+			},
 		},
 	})
 
@@ -929,14 +932,14 @@ func TestExtractValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get existing field
-	result, err := evaluator.ExtractValue("cluster.metadata.name", "")
+	result, err := evaluator.ExtractValue("cluster.name", "")
 	require.NoError(t, err)
 	assert.Equal(t, "test-cluster", result.Value)
 
 	// Get nested field
-	result, err = evaluator.ExtractValue("cluster.status.phase", "")
+	result, err = evaluator.ExtractValue("cluster.status.conditions", "")
 	require.NoError(t, err)
-	assert.Equal(t, "Ready", result.Value)
+	assert.Equal(t, []interface{}{map[string]interface{}{"type": "Ready", "status": "True"}}, result.Value)
 
 	// Get non-existent field - returns nil value (not error)
 	result, err = evaluator.ExtractValue("cluster.nonexistent", "")
@@ -1046,9 +1049,7 @@ func TestEvaluationResultStruct(t *testing.T) {
 func TestNullHandling(t *testing.T) {
 	ctx := NewEvaluationContext()
 	ctx.Set("cluster", map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name": "test-cluster",
-		},
+		"name":   "test-cluster",
 		"status": nil, // null value
 		"spec": map[string]interface{}{
 			"provider": nil, // null nested value
@@ -1062,8 +1063,8 @@ func TestNullHandling(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("access field on null parent returns nil value", func(t *testing.T) {
-		// Accessing cluster.status.phase when status is null - returns nil value (not error)
-		result, err := evaluator.ExtractValue("cluster.status.phase", "")
+		// Accessing cluster.status.conditions when status is null - returns nil value (not error)
+		result, err := evaluator.ExtractValue("cluster.status.conditions", "")
 		assert.NoError(t, err)      // No parse error
 		assert.Nil(t, result.Value) // Value is nil (field not found)
 	})
@@ -1075,7 +1076,7 @@ func TestNullHandling(t *testing.T) {
 	})
 
 	t.Run("existing field still works", func(t *testing.T) {
-		result, err := evaluator.EvaluateCondition("cluster.metadata.name", OperatorEquals, "test-cluster")
+		result, err := evaluator.EvaluateCondition("cluster.name", OperatorEquals, "test-cluster")
 		assert.NoError(t, err)
 		assert.True(t, result.Matched)
 	})

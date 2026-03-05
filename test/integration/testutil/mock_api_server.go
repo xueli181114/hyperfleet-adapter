@@ -50,9 +50,9 @@ func NewMockAPIServer(t *testing.T) *MockAPIServer {
 		t:        t,
 		requests: make([]MockRequest, 0),
 		clusterResponse: map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"name": "test-cluster",
-			},
+			"id":   "test-cluster-id",
+			"name": "test-cluster",
+			"kind": "Cluster",
 			"spec": map[string]interface{}{
 				"region":     "us-east-1",
 				"provider":   "aws",
@@ -214,9 +214,9 @@ func (m *MockAPIServer) Reset() {
 	m.failPrecondition = false
 	m.failPostAction = false
 	m.clusterResponse = map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name": "test-cluster",
-		},
+		"id":   "test-cluster-id",
+		"name": "test-cluster",
+		"kind": "Cluster",
 		"spec": map[string]interface{}{
 			"region":     "us-east-1",
 			"provider":   "aws",

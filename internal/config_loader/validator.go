@@ -42,15 +42,9 @@ func (v *AdapterConfigValidator) ValidateStructure() error {
 		return fmt.Errorf("adapter config is nil")
 	}
 
-	// Phase 1: Struct tag validation
+	// Struct tag validation
 	if errs := ValidateStruct(v.config); errs != nil && errs.HasErrors() {
 		return fmt.Errorf("%s", errs.First())
-	}
-
-	// Phase 2: API version validation
-	if !IsSupportedAPIVersion(v.config.APIVersion) {
-		return fmt.Errorf("unsupported apiVersion %q (supported: %s)",
-			v.config.APIVersion, strings.Join(SupportedAPIVersions, ", "))
 	}
 
 	return nil
@@ -80,15 +74,9 @@ func (v *TaskConfigValidator) ValidateStructure() error {
 		return fmt.Errorf("task config is nil")
 	}
 
-	// Phase 1: Struct tag validation
+	// Struct tag validation
 	if errs := ValidateStruct(v.config); errs != nil && errs.HasErrors() {
 		return fmt.Errorf("%s", errs.First())
-	}
-
-	// Phase 2: API version validation
-	if !IsSupportedAPIVersion(v.config.APIVersion) {
-		return fmt.Errorf("unsupported apiVersion %q (supported: %s)",
-			v.config.APIVersion, strings.Join(SupportedAPIVersions, ", "))
 	}
 
 	return nil
@@ -102,11 +90,11 @@ func (v *TaskConfigValidator) ValidateFileReferences() error {
 
 	var errors []string
 
-	// Validate buildRef in spec.post.payloads
-	if v.config.Spec.Post != nil {
-		for i, payload := range v.config.Spec.Post.Payloads {
+	// Validate build_ref in post.payloads
+	if v.config.Post != nil {
+		for i, payload := range v.config.Post.Payloads {
 			if payload.BuildRef != "" {
-				path := fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPayloads, i, FieldBuildRef)
+				path := fmt.Sprintf("%s.%s[%d].%s", FieldPost, FieldPayloads, i, FieldBuildRef)
 				if err := v.validateFileExists(payload.BuildRef, path); err != nil {
 					errors = append(errors, err.Error())
 				}
@@ -114,11 +102,11 @@ func (v *TaskConfigValidator) ValidateFileReferences() error {
 		}
 	}
 
-	// Validate manifest.ref in spec.resources
-	for i, resource := range v.config.Spec.Resources {
+	// Validate manifest.ref in resources
+	for i, resource := range v.config.Resources {
 		ref := resource.GetManifestRef()
 		if ref != "" {
-			path := fmt.Sprintf("%s.%s[%d].%s.%s", FieldSpec, FieldResources, i, FieldManifest, FieldRef)
+			path := fmt.Sprintf("%s[%d].%s.%s", FieldResources, i, FieldManifest, FieldRef)
 			if err := v.validateFileExists(ref, path); err != nil {
 				errors = append(errors, err.Error())
 			}
@@ -199,15 +187,15 @@ func (c *AdapterTaskConfig) GetDefinedVariables() map[string]bool {
 		vars[b] = true
 	}
 
-	// Parameters from spec.params
-	for _, p := range c.Spec.Params {
+	// Parameters from params
+	for _, p := range c.Params {
 		if p.Name != "" {
 			vars[p.Name] = true
 		}
 	}
 
 	// Variables from precondition captures
-	for _, precond := range c.Spec.Preconditions {
+	for _, precond := range c.Preconditions {
 		for _, capture := range precond.Capture {
 			if capture.Name != "" {
 				vars[capture.Name] = true
@@ -216,8 +204,8 @@ func (c *AdapterTaskConfig) GetDefinedVariables() map[string]bool {
 	}
 
 	// Post payloads
-	if c.Spec.Post != nil {
-		for _, p := range c.Spec.Post.Payloads {
+	if c.Post != nil {
+		for _, p := range c.Post.Payloads {
 			if p.Name != "" {
 				vars[p.Name] = true
 			}
@@ -225,7 +213,7 @@ func (c *AdapterTaskConfig) GetDefinedVariables() map[string]bool {
 	}
 
 	// Resource aliases
-	for _, r := range c.Spec.Resources {
+	for _, r := range c.Resources {
 		if r.Name != "" {
 			vars[FieldResources+"."+r.Name] = true
 		}
@@ -271,8 +259,8 @@ func (v *TaskConfigValidator) initCELEnv() error {
 }
 
 func (v *TaskConfigValidator) validateTransportConfig() {
-	for i, resource := range v.config.Spec.Resources {
-		basePath := fmt.Sprintf("%s.%s[%d]", FieldSpec, FieldResources, i)
+	for i, resource := range v.config.Resources {
+		basePath := fmt.Sprintf("%s[%d]", FieldResources, i)
 
 		if resource.Transport != nil {
 			transportPath := basePath + "." + FieldTransport
@@ -296,12 +284,12 @@ func (v *TaskConfigValidator) validateTransportConfig() {
 
 				maestroPath := transportPath + "." + TransportClientMaestro
 
-				// Validate targetCluster is set
+				// Validate target_cluster is set
 				if resource.Transport.Maestro.TargetCluster == "" {
 					v.errors.Add(maestroPath+"."+FieldTargetCluster,
-						"targetCluster is required for maestro transport")
+						"target_cluster is required for maestro transport")
 				} else {
-					// Validate template variables in targetCluster
+					// Validate template variables in target_cluster
 					v.validateTemplateString(resource.Transport.Maestro.TargetCluster,
 						maestroPath+"."+FieldTargetCluster)
 				}
@@ -323,9 +311,9 @@ func (v *TaskConfigValidator) validateTransportConfig() {
 }
 
 func (v *TaskConfigValidator) validateConditionValues() {
-	for i, precond := range v.config.Spec.Preconditions {
+	for i, precond := range v.config.Preconditions {
 		for j, cond := range precond.Conditions {
-			path := fmt.Sprintf("%s.%s[%d].%s[%d]", FieldSpec, FieldPreconditions, i, FieldConditions, j)
+			path := fmt.Sprintf("%s[%d].%s[%d]", FieldPreconditions, i, FieldConditions, j)
 			v.validateConditionValue(cond.Operator, cond.Value, path)
 		}
 	}
@@ -354,10 +342,10 @@ func (v *TaskConfigValidator) validateConditionValue(operator string, value inte
 }
 
 func (v *TaskConfigValidator) validateCaptureFieldExpressions() {
-	for i, precond := range v.config.Spec.Preconditions {
+	for i, precond := range v.config.Preconditions {
 		for j, capture := range precond.Capture {
 			if capture.Expression != "" && v.celEnv != nil {
-				path := fmt.Sprintf("%s.%s[%d].%s[%d].%s", FieldSpec, FieldPreconditions, i, FieldCapture, j, FieldExpression)
+				path := fmt.Sprintf("%s[%d].%s[%d].%s", FieldPreconditions, i, FieldCapture, j, FieldExpression)
 				v.validateCELExpression(capture.Expression, path)
 			}
 		}
@@ -366,9 +354,9 @@ func (v *TaskConfigValidator) validateCaptureFieldExpressions() {
 
 func (v *TaskConfigValidator) validateTemplateVariables() {
 	// Validate precondition API call URLs and bodies
-	for i, precond := range v.config.Spec.Preconditions {
+	for i, precond := range v.config.Preconditions {
 		if precond.APICall != nil {
-			basePath := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldPreconditions, i, FieldAPICall)
+			basePath := fmt.Sprintf("%s[%d].%s", FieldPreconditions, i, FieldAPICall)
 			v.validateTemplateString(precond.APICall.URL, basePath+"."+FieldURL)
 			v.validateTemplateString(precond.APICall.Body, basePath+"."+FieldBody)
 			for j, header := range precond.APICall.Headers {
@@ -379,8 +367,8 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 	}
 
 	// Validate resource manifests and transport config templates
-	for i, resource := range v.config.Spec.Resources {
-		resourcePath := fmt.Sprintf("%s.%s[%d]", FieldSpec, FieldResources, i)
+	for i, resource := range v.config.Resources {
+		resourcePath := fmt.Sprintf("%s[%d]", FieldResources, i)
 		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
 			v.validateTemplateMap(manifest, resourcePath+"."+FieldManifest)
 		}
@@ -415,10 +403,10 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 	}
 
 	// Validate post action API calls
-	if v.config.Spec.Post != nil {
-		for i, action := range v.config.Spec.Post.PostActions {
+	if v.config.Post != nil {
+		for i, action := range v.config.Post.PostActions {
 			if action.APICall != nil {
-				basePath := fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPostActions, i, FieldAPICall)
+				basePath := fmt.Sprintf("%s.%s[%d].%s", FieldPost, FieldPostActions, i, FieldAPICall)
 				v.validateTemplateString(action.APICall.URL, basePath+"."+FieldURL)
 				v.validateTemplateString(action.APICall.Body, basePath+"."+FieldBody)
 				for j, header := range action.APICall.Headers {
@@ -429,10 +417,10 @@ func (v *TaskConfigValidator) validateTemplateVariables() {
 		}
 
 		// Validate post payload build value templates
-		for i, payload := range v.config.Spec.Post.Payloads {
+		for i, payload := range v.config.Post.Payloads {
 			if payload.Build != nil {
 				if buildMap, ok := payload.Build.(map[string]interface{}); ok {
-					v.validateTemplateMap(buildMap, fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPayloads, i, FieldBuild))
+					v.validateTemplateMap(buildMap, fmt.Sprintf("%s.%s[%d].%s", FieldPost, FieldPayloads, i, FieldBuild))
 				}
 			}
 		}
@@ -505,18 +493,18 @@ func (v *TaskConfigValidator) validateCELExpressions() {
 		return
 	}
 
-	for i, precond := range v.config.Spec.Preconditions {
+	for i, precond := range v.config.Preconditions {
 		if precond.Expression != "" {
-			path := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldPreconditions, i, FieldExpression)
+			path := fmt.Sprintf("%s[%d].%s", FieldPreconditions, i, FieldExpression)
 			v.validateCELExpression(precond.Expression, path)
 		}
 	}
 
-	if v.config.Spec.Post != nil {
-		for i, payload := range v.config.Spec.Post.Payloads {
+	if v.config.Post != nil {
+		for i, payload := range v.config.Post.Payloads {
 			if payload.Build != nil {
 				if buildMap, ok := payload.Build.(map[string]interface{}); ok {
-					v.validateBuildExpressions(buildMap, fmt.Sprintf("%s.%s.%s[%d].%s", FieldSpec, FieldPost, FieldPayloads, i, FieldBuild))
+					v.validateBuildExpressions(buildMap, fmt.Sprintf("%s.%s[%d].%s", FieldPost, FieldPayloads, i, FieldBuild))
 				}
 			}
 		}
@@ -558,7 +546,7 @@ func (v *TaskConfigValidator) validateBuildExpressions(m map[string]interface{},
 }
 
 func (v *TaskConfigValidator) validateK8sManifests() {
-	for i, resource := range v.config.Spec.Resources {
+	for i, resource := range v.config.Resources {
 		// Skip K8s manifest validation for maestro transport — manifest holds ManifestWork content
 		if resource.IsMaestroTransport() {
 			continue
@@ -568,7 +556,7 @@ func (v *TaskConfigValidator) validateK8sManifests() {
 			continue
 		}
 
-		path := fmt.Sprintf("%s.%s[%d].%s", FieldSpec, FieldResources, i, FieldManifest)
+		path := fmt.Sprintf("%s[%d].%s", FieldResources, i, FieldManifest)
 
 		if manifest, ok := resource.Manifest.(map[string]interface{}); ok {
 			if ref, hasRef := manifest[FieldRef].(string); hasRef {
@@ -583,7 +571,7 @@ func (v *TaskConfigValidator) validateK8sManifests() {
 }
 
 func (v *TaskConfigValidator) validateK8sManifest(manifest map[string]interface{}, path string) {
-	requiredFields := []string{FieldAPIVersion, FieldKind, FieldMetadata}
+	requiredFields := []string{FieldAPIVersion, FieldKind, "metadata"}
 
 	for _, field := range requiredFields {
 		if _, ok := manifest[field]; !ok {
@@ -591,9 +579,9 @@ func (v *TaskConfigValidator) validateK8sManifest(manifest map[string]interface{
 		}
 	}
 
-	if metadata, ok := manifest[FieldMetadata].(map[string]interface{}); ok {
+	if metadata, ok := manifest["metadata"].(map[string]interface{}); ok {
 		if _, hasName := metadata[FieldName]; !hasName {
-			v.errors.Add(path+"."+FieldMetadata, fmt.Sprintf("missing required field %q", FieldName))
+			v.errors.Add(path+"."+"metadata", fmt.Sprintf("missing required field %q", FieldName))
 		}
 	}
 
@@ -622,16 +610,6 @@ func isSliceOrArray(value interface{}) bool {
 	return kind == reflect.Slice || kind == reflect.Array
 }
 
-// IsSupportedAPIVersion checks if the given apiVersion is supported
-func IsSupportedAPIVersion(apiVersion string) bool {
-	for _, v := range SupportedAPIVersions {
-		if v == apiVersion {
-			return true
-		}
-	}
-	return false
-}
-
 // ValidateAdapterVersion validates that the config's adapter version is compatible
 // with the expected adapter version. Only major and minor versions are compared;
 // patch version differences are allowed (patch releases are bug fixes only).
@@ -641,7 +619,10 @@ func ValidateAdapterVersion(config *AdapterConfig, expectedVersion string) error
 		return nil
 	}
 
-	configVersion := config.Spec.Adapter.Version
+	configVersion := config.Adapter.Version
+	if configVersion == "" {
+		return nil
+	}
 
 	configSemver, err := semver.NewVersion(configVersion)
 	if err != nil {

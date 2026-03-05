@@ -4,16 +4,10 @@ package config_loader
 // These constants define the known field names used in adapter configuration
 // to avoid hardcoding strings throughout the codebase.
 
-// Top-level field names
-const (
-	FieldSpec     = "spec"
-	FieldMetadata = "metadata"
-)
-
-// Spec section field names
+// Field names
 const (
 	FieldAdapter       = "adapter"
-	FieldHyperfleetAPI = "hyperfleetApi"
+	FieldHyperfleetAPI = "hyperfleet_api"
 	FieldKubernetes    = "kubernetes"
 	FieldParams        = "params"
 	FieldPreconditions = "preconditions"
@@ -40,12 +34,12 @@ const (
 const (
 	FieldPayloads = "payloads"
 	FieldBuild    = "build"
-	FieldBuildRef = "buildRef"
+	FieldBuildRef = "build_ref"
 )
 
 // Precondition field names
 const (
-	FieldAPICall    = "apiCall"
+	FieldAPICall    = "api_call"
 	FieldCapture    = "capture"
 	FieldConditions = "conditions"
 	FieldExpression = "expression"
@@ -78,7 +72,7 @@ const (
 	FieldTransport     = "transport"
 	FieldClient        = "client"
 	FieldMaestro       = "maestro"
-	FieldTargetCluster = "targetCluster"
+	FieldTargetCluster = "target_cluster"
 )
 
 // Transport client types
@@ -90,9 +84,9 @@ const (
 // Resource field names
 const (
 	FieldManifest          = "manifest"
-	FieldRecreateOnChange  = "recreateOnChange"
+	FieldRecreateOnChange  = "recreate_on_change"
 	FieldDiscovery         = "discovery"
-	FieldNestedDiscoveries = "nestedDiscoveries"
+	FieldNestedDiscoveries = "nested_discoveries"
 )
 
 // Manifest reference field names
@@ -103,18 +97,18 @@ const (
 // Discovery field names
 const (
 	FieldNamespace   = "namespace"
-	FieldByName      = "byName"
-	FieldBySelectors = "bySelectors"
+	FieldByName      = "by_name"
+	FieldBySelectors = "by_selectors"
 )
 
 // Selector field names
 const (
-	FieldLabelSelector = "labelSelector"
+	FieldLabelSelector = "label_selector"
 )
 
 // Post config field names
 const (
-	FieldPostActions = "postActions"
+	FieldPostActions = "post_actions"
 )
 
 // Kubernetes manifest field names

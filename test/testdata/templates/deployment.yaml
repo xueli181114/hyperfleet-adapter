@@ -6,7 +6,7 @@ metadata:
   namespace: "cluster-{{ .clusterId }}"
   labels:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
-    hyperfleet.io/managed-by: "{{ .metadata.name }}"
+    hyperfleet.io/managed-by: "{{ .adapter.name }}"
 spec:
   replicas: 1
   selector:

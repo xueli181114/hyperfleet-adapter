@@ -9,7 +9,7 @@ metadata:
     hyperfleet.io/cluster-id: "{{ .clusterId }}"
     hyperfleet.io/job-type: "validation"
     hyperfleet.io/resource-type: "job"
-    hyperfleet.io/managed-by: "{{ .metadata.name }}"
+    hyperfleet.io/managed-by: "{{ .adapter.name }}"
 spec:
   template:
     metadata:

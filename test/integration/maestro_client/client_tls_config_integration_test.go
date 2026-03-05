@@ -57,13 +57,13 @@ func writeTestAdapterConfig(t *testing.T, dir string, opts map[string]string) st
 
 	tlsBlock := ""
 	if opts["caFile"] != "" {
-		tlsBlock = fmt.Sprintf(`      auth:
-        type: "tls"
-        tlsConfig:
-          caFile: %q
-          certFile: %q
-          keyFile: %q
-          httpCaFile: %q`, opts["caFile"], opts["certFile"], opts["keyFile"], opts["httpCaFile"])
+		tlsBlock = fmt.Sprintf(`    auth:
+      type: "tls"
+      tls_config:
+        ca_file: %q
+        cert_file: %q
+        key_file: %q
+        http_ca_file: %q`, opts["caFile"], opts["certFile"], opts["keyFile"], opts["httpCaFile"])
 	}
 
 	insecure := "false"
@@ -71,30 +71,28 @@ func writeTestAdapterConfig(t *testing.T, dir string, opts map[string]string) st
 		insecure = "true"
 	}
 
-	yaml := fmt.Sprintf(`apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+	yaml := fmt.Sprintf(`adapter:
   name: tls-integration-test
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    maestro:
-      grpcServerAddress: %q
-      httpServerAddress: %q
-      sourceId: %q
-      insecure: %s
-      timeout: "15s"
-      serverHealthinessTimeout: "25s"
+  version: "0.1.0"
+clients:
+  maestro:
+    grpc_server_address: %q
+    http_server_address: %q
+    source_id: %q
+    insecure: %s
+    timeout: "15s"
+    server_healthiness_timeout: "25s"
 %s
-    hyperfleetApi:
-      baseUrl: http://localhost:8000
-      version: v1
-      timeout: 2s
-      retryAttempts: 1
-    broker:
-      subscriptionId: test
-      topic: test
+  hyperfleet_api:
+    base_url: http://localhost:8000
+    version: v1
+    timeout: 2s
+    retry_attempts: 1
+  broker:
+    subscription_id: test
+    topic: test
+  kubernetes:
+    api_version: v1
 `, opts["grpcAddr"], opts["httpAddr"], opts["sourceId"], insecure, tlsBlock)
 
 	path := filepath.Join(dir, "adapter-config.yaml")
@@ -105,12 +103,7 @@ spec:
 // writeMinimalTaskConfig writes the smallest valid AdapterTaskConfig.
 func writeMinimalTaskConfig(t *testing.T, dir string) string {
 	t.Helper()
-	yaml := `apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: tls-test-task
-spec:
-  params: []
+	yaml := `params: []
 `
 	path := filepath.Join(dir, "task-config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o644))
@@ -143,9 +136,11 @@ func TestTLSConfigLoadAndConnect_MutualTLS(t *testing.T) {
 		config_loader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err, "Config loading should succeed")
-	require.NotNil(t, cfg.Spec.Clients.Maestro, "Maestro config should be present")
+	require.NotNil(t, cfg, "Config should not be nil")
+	require.NotNil(t, cfg.Clients, "Clients config should not be nil")
+	require.NotNil(t, cfg.Clients.Maestro, "Maestro config should be present")
 
-	maestroCfg := cfg.Spec.Clients.Maestro
+	maestroCfg := cfg.Clients.Maestro
 	assert.Equal(t, env.TLSMaestroGRPCAddr, maestroCfg.GRPCServerAddress)
 	assert.Equal(t, env.TLSMaestroServerAddr, maestroCfg.HTTPServerAddress)
 	assert.Equal(t, "config-tls-mtls", maestroCfg.SourceID)
@@ -203,8 +198,10 @@ func TestTLSConfigLoadAndConnect_CAOnly(t *testing.T) {
 		config_loader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err)
+	require.NotNil(t, cfg, "Config should not be nil")
+	require.NotNil(t, cfg.Clients, "Clients config should not be nil")
 
-	clientCfg, err := buildMaestroClientConfigFromLoaded(cfg.Spec.Clients.Maestro)
+	clientCfg, err := buildMaestroClientConfigFromLoaded(cfg.Clients.Maestro)
 	require.NoError(t, err)
 
 	assert.Equal(t, env.TLSCerts.CAFilePath(), clientCfg.CAFile)
@@ -240,8 +237,10 @@ func TestTLSConfigLoadAndConnect_Insecure(t *testing.T) {
 		config_loader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err)
+	require.NotNil(t, cfg, "Config should not be nil")
+	require.NotNil(t, cfg.Clients, "Clients config should not be nil")
 
-	maestroCfg := cfg.Spec.Clients.Maestro
+	maestroCfg := cfg.Clients.Maestro
 	assert.True(t, maestroCfg.Insecure)
 
 	clientCfg, err := buildMaestroClientConfigFromLoaded(maestroCfg)
@@ -288,8 +287,10 @@ func TestTLSConfigLoadAndConnect_EnvOverride(t *testing.T) {
 		config_loader.WithSkipSemanticValidation(),
 	)
 	require.NoError(t, err)
+	require.NotNil(t, cfg, "Config should not be nil")
+	require.NotNil(t, cfg.Clients, "Clients config should not be nil")
 
-	maestroCfg := cfg.Spec.Clients.Maestro
+	maestroCfg := cfg.Clients.Maestro
 	assert.Equal(t, env.TLSMaestroGRPCAddr, maestroCfg.GRPCServerAddress, "Env should override YAML")
 	assert.Equal(t, env.TLSMaestroServerAddr, maestroCfg.HTTPServerAddress, "Env should override YAML")
 	assert.Equal(t, "config-tls-env-override", maestroCfg.SourceID, "Env should override YAML")

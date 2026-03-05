@@ -21,350 +21,342 @@
 #  14.  adapter.?       — adapter execution metadata access
 #  15.  Go templates    — template rendering with {{ }}
 
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: cel-showcase-task
-  labels:
-    hyperfleet.io/adapter-type: cel-showcase
+params:
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
 
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
+  - name: "clusterKind"
+    source: "event.kind"
+    type: "string"
+    default: "Cluster"
 
-    - name: "clusterKind"
-      source: "event.kind"
-      type: "string"
-      default: "Cluster"
+  - name: "generation"
+    source: "event.generation"
+    type: "int"
+    required: true
 
-    - name: "generation"
-      source: "event.generation"
-      type: "string"
-      required: true
+  - name: "region"
+    source: "env.REGION"
+    type: "string"
+    default: "us-east-1"
 
-    - name: "region"
-      source: "env.REGION"
-      type: "string"
-      default: "us-east-1"
+  - name: "adapterName"
+    source: "env.ADAPTER_NAME"
+    type: "string"
+    default: "dry-run-adapter"
 
-    - name: "adapterName"
-      source: "env.ADAPTER_NAME"
-      type: "string"
-      default: "dry-run-adapter"
+# ===========================================================================
+# Preconditions — CEL capture patterns
+# ===========================================================================
+preconditions:
+  - name: "fetch-cluster"
+    api_call:
+      method: "GET"
+      url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
+      timeout: 10s
+    capture:
+      # ---------------------------------------------------------------
+      # Pattern 1: field — simple dot-notation extraction
+      # Extracts a top-level field from the API response by name.
+      # ---------------------------------------------------------------
+      - name: "clusterName"
+        field: "name"
 
-  # ===========================================================================
-  # Preconditions — CEL capture patterns
-  # ===========================================================================
-  preconditions:
-    - name: "fetch-cluster"
-      apiCall:
-        method: "GET"
-        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-        timeout: 10s
-      capture:
-        # ---------------------------------------------------------------
-        # Pattern 1: field — simple dot-notation extraction
-        # Extracts a top-level field from the API response by name.
-        # ---------------------------------------------------------------
-        - name: "clusterName"
-          field: "name"
+      # ---------------------------------------------------------------
+      # Pattern 1b: field — nested dot-notation extraction
+      # Extracts a nested field using dot-separated path.
+      # ---------------------------------------------------------------
+      - name: "clusterRegion"
+        field: "spec.region"
 
-        # ---------------------------------------------------------------
-        # Pattern 1b: field — nested dot-notation extraction
-        # Extracts a nested field using dot-separated path.
-        # ---------------------------------------------------------------
-        - name: "clusterRegion"
-          field: "spec.region"
+      # ---------------------------------------------------------------
+      # Pattern 2: filter() + ternary — list filtering with fallback
+      # Filters the conditions list for type=="Ready", returns status
+      # or "Unknown" if not found.
+      # ---------------------------------------------------------------
+      - name: "clusterStatus"
+        expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status
+            : "Unknown"
 
-        # ---------------------------------------------------------------
-        # Pattern 2: filter() + ternary — list filtering with fallback
-        # Filters the conditions list for type=="Ready", returns status
-        # or "Unknown" if not found.
-        # ---------------------------------------------------------------
-        - name: "clusterStatus"
-          expression: |
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].status
-              : "Unknown"
+      # ---------------------------------------------------------------
+      # Pattern 3: exists() — boolean check on list elements
+      # Returns true if any tag matches "production".
+      # ---------------------------------------------------------------
+      - name: "isProduction"
+        expression: |
+          spec.tags.exists(t, t == "production")
 
-        # ---------------------------------------------------------------
-        # Pattern 3: exists() — boolean check on list elements
-        # Returns true if any tag matches "production".
-        # ---------------------------------------------------------------
-        - name: "isProduction"
-          expression: |
-            spec.tags.exists(t, t == "production")
+      # ---------------------------------------------------------------
+      # Pattern 4: size() — counting elements
+      # Returns the number of node pools defined in spec.
+      # ---------------------------------------------------------------
+      - name: "nodePoolCount"
+        expression: |
+          spec.node_pools.size()
 
-        # ---------------------------------------------------------------
-        # Pattern 4: size() — counting elements
-        # Returns the number of node pools defined in spec.
-        # ---------------------------------------------------------------
-        - name: "nodePoolCount"
-          expression: |
-            spec.node_pools.size()
+      # ---------------------------------------------------------------
+      # Pattern 5: string concatenation — building derived values
+      # Constructs a composite identifier from multiple fields.
+      # ---------------------------------------------------------------
+      - name: "resourcePrefix"
+        expression: |
+          spec.provider + "-" + spec.region + "-" + name
 
-        # ---------------------------------------------------------------
-        # Pattern 5: string concatenation — building derived values
-        # Constructs a composite identifier from multiple fields.
-        # ---------------------------------------------------------------
-        - name: "resourcePrefix"
-          expression: |
-            spec.provider + "-" + spec.region + "-" + name
+      # ---------------------------------------------------------------
+      # Pattern 6: type coercion — string() and int()
+      # Converts the numeric compute node count to string.
+      # ---------------------------------------------------------------
+      - name: "computeNodesStr"
+        expression: |
+          "compute=" + string(nodes.compute)
 
-        # ---------------------------------------------------------------
-        # Pattern 6: type coercion — string() and int()
-        # Converts the numeric compute node count to string.
-        # ---------------------------------------------------------------
-        - name: "computeNodesStr"
-          expression: |
-            "compute=" + string(nodes.compute)
+      # ---------------------------------------------------------------
+      # Pattern 7: in operator — membership check
+      # Checks if the provider is one of the supported cloud providers.
+      # ---------------------------------------------------------------
+      - name: "isSupportedProvider"
+        expression: |
+          spec.provider in ["aws", "gcp", "azure"]
 
-        # ---------------------------------------------------------------
-        # Pattern 7: in operator — membership check
-        # Checks if the provider is one of the supported cloud providers.
-        # ---------------------------------------------------------------
-        - name: "isSupportedProvider"
-          expression: |
-            spec.provider in ["aws", "gcp", "azure"]
+      # ---------------------------------------------------------------
+      # Pattern 8: map() — list transformation
+      # Transforms the node_pools list to extract just the names.
+      # ---------------------------------------------------------------
+      - name: "nodePoolNames"
+        expression: |
+          spec.node_pools.map(p, p.name)
 
-        # ---------------------------------------------------------------
-        # Pattern 8: map() — list transformation
-        # Transforms the node_pools list to extract just the names.
-        # ---------------------------------------------------------------
-        - name: "nodePoolNames"
-          expression: |
-            spec.node_pools.map(p, p.name)
+      # ---------------------------------------------------------------
+      # Pattern 4b: size() — counting with field extraction
+      # Extracts compute node count for use in conditions.
+      # ---------------------------------------------------------------
+      - name: "computeNodes"
+        field: "nodes.compute"
 
-        # ---------------------------------------------------------------
-        # Pattern 4b: size() — counting with field extraction
-        # Extracts compute node count for use in conditions.
-        # ---------------------------------------------------------------
-        - name: "computeNodes"
-          field: "nodes.compute"
+      # Static timestamp for dry-run reproducibility
+      - name: "timestamp"
+        expression: "\"2006-01-02T15:04:05Z07:00\""
 
-        # Static timestamp for dry-run reproducibility
-        - name: "timestamp"
-          expression: "\"2006-01-02T15:04:05Z07:00\""
+    conditions:
+      - field: "clusterStatus"
+        operator: "notEquals"
+        value: "True"
 
-      conditions:
-        - field: "clusterStatus"
-          operator: "notEquals"
-          value: "True"
+# ===========================================================================
+# Resources — Kubernetes manifests to apply
+# ===========================================================================
+resources:
+  # Resource 0: Namespace
+  - name: "namespace0"
+    transport:
+      client: kubernetes
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        # Pattern 15: Go template rendering
+        name: "{{ .clusterId | lower }}"
+        labels:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          hyperfleet.io/managed-by: "{{ .adapterName }}"
+          hyperfleet.io/resource-type: "namespace"
+        annotations:
+          hyperfleet.io/created-by: "hyperfleet-adapter"
+          hyperfleet.io/generation: "{{ .generation }}"
+    discovery:
+      by_name: "{{ .clusterId | lower }}"
 
-  # ===========================================================================
-  # Resources — Kubernetes manifests to apply
-  # ===========================================================================
-  resources:
-    # Resource 0: Namespace
-    - name: "namespace0"
-      transport:
-        client: kubernetes
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          # Pattern 15: Go template rendering
-          name: "{{ .clusterId | lower }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/managed-by: "{{ .adapterName }}"
-            hyperfleet.io/resource-type: "namespace"
-          annotations:
-            hyperfleet.io/created-by: "hyperfleet-adapter"
-            hyperfleet.io/generation: "{{ .generation }}"
-      discovery:
-        byName: "{{ .clusterId | lower }}"
-
-    # Resource 1: ConfigMap — cluster configuration
-    - name: "configmap0"
-      transport:
-        client: kubernetes
-      manifest:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "{{ .clusterId }}-config"
-          namespace: "{{ .clusterId | lower }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          annotations:
-            hyperfleet.io/generation: "{{ .generation }}"
-        data:
-          cluster_id: "{{ .clusterId }}"
-          cluster_name: "{{ .clusterName }}"
-      discovery:
+  # Resource 1: ConfigMap — cluster configuration
+  - name: "configmap0"
+    transport:
+      client: kubernetes
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ .clusterId }}-config"
         namespace: "{{ .clusterId | lower }}"
-        byName: "{{ .clusterId }}-config"
+        labels:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+        annotations:
+          hyperfleet.io/generation: "{{ .generation }}"
+      data:
+        cluster_id: "{{ .clusterId }}"
+        cluster_name: "{{ .clusterName }}"
+    discovery:
+      namespace: "{{ .clusterId | lower }}"
+      by_name: "{{ .clusterId }}-config"
 
-    # Resource 2: ConfigMap — extra configuration (for additional expression targets)
-    - name: "configmap1"
-      transport:
-        client: kubernetes
-      manifest:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "{{ .clusterId }}-extra"
-          namespace: "{{ .clusterId | lower }}"
-          labels:
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          annotations:
-            hyperfleet.io/generation: "{{ .generation }}"
-        data:
-          feature_flags: "ha-enabled,auto-scaling,monitoring"
-          max_replicas: "10"
-          endpoint: "https://{{ .clusterId }}.{{ .region }}.hyperfleet.io"
-      discovery:
+  # Resource 2: ConfigMap — extra configuration (for additional expression targets)
+  - name: "configmap1"
+    transport:
+      client: kubernetes
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ .clusterId }}-extra"
         namespace: "{{ .clusterId | lower }}"
-        byName: "{{ .clusterId }}-extra"
+        labels:
+          hyperfleet.io/cluster-id: "{{ .clusterId }}"
+        annotations:
+          hyperfleet.io/generation: "{{ .generation }}"
+      data:
+        feature_flags: "ha-enabled,auto-scaling,monitoring"
+        max_replicas: "10"
+        endpoint: "https://{{ .clusterId }}.{{ .region }}.hyperfleet.io"
+    discovery:
+      namespace: "{{ .clusterId | lower }}"
+      by_name: "{{ .clusterId }}-extra"
 
-  # ===========================================================================
-  # Post-processing — Payload build with CEL expression patterns
-  # ===========================================================================
-  post:
-    payloads:
-      - name: "statusPayload"
-        build:
-          adapter: "cel-showcase"
-          conditions:
-            # ---------------------------------------------------------
-            # Pattern 9: has() + ternary — existence check with fallback
-            # Checks if all expected resources were discovered.
-            # ---------------------------------------------------------
-            - type: "Applied"
-              status:
-                expression: |
-                  has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1)
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1)
-                  ? "AllResourcesApplied"
-                  : "ResourcesNotDiscovered"
-              message:
-                # Pattern 5 (payload): string concatenation with conditional parts
-                expression: |
-                  has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1)
-                  ? "All resources applied: "
-                    + resources.namespace0.metadata.name + ", "
-                    + resources.configmap0.metadata.name + ", "
-                    + resources.configmap1.metadata.name
-                  : "One or more resources not yet discovered"
-
-            # ---------------------------------------------------------
-            # Pattern 10: optional chaining ?.orValue() — safe navigation
-            # Safely reads namespace phase even if fields are missing.
-            # ---------------------------------------------------------
-            - type: "Available"
-              status:
-                expression: |
-                  resources.?namespace0.?status.?phase.orValue("") == "Active"
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  resources.?namespace0.?status.?phase.orValue("Pending")
-              message:
-                expression: |
-                  "Namespace phase: " + resources.?namespace0.?status.?phase.orValue("unknown")
-
-            # ---------------------------------------------------------
-            # Pattern 14: adapter.? — adapter execution metadata access
-            # Accesses adapter execution status and error details.
-            # ---------------------------------------------------------
-            - type: "Health"
-              status:
-                expression: |
-                  adapter.?executionStatus.orValue("") == "success"
-                    && !adapter.?resourcesSkipped.orValue(false)
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  adapter.?executionStatus.orValue("") != "success"
-                  ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
-                  : adapter.?resourcesSkipped.orValue(false)
-                    ? "ResourcesSkipped"
-                    : "Healthy"
-              message:
-                # Pattern 5 (payload): multi-part string building
-                expression: |
-                  adapter.?executionStatus.orValue("") != "success"
-                  ? "Adapter failed at phase ["
-                      + adapter.?executionError.?phase.orValue("unknown")
-                      + "] step ["
-                      + adapter.?executionError.?step.orValue("unknown")
-                      + "]: "
-                      + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
-                  : adapter.?resourcesSkipped.orValue(false)
-                    ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
-                    : "Adapter execution completed successfully"
-
-          # Pattern 15: Go template rendering in payload values
-          observed_generation:
-            expression: "generation"
-          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-
-          data:
-            # ---------------------------------------------------------
-            # Pattern 10 (payload): optional chaining for safe field access
-            # ---------------------------------------------------------
-            namespace:
-              name:
-                expression: |
-                  resources.?namespace0.?metadata.?name.orValue("")
-              phase:
-                expression: |
-                  resources.?namespace0.?status.?phase.orValue("")
-              labels_json:
-                # Pattern 13: toJson() — serialization of resource metadata
-                expression: |
-                  has(resources.namespace0)
-                  ? toJson(resources.namespace0.metadata.labels)
-                  : "{}"
-
-            configmap:
-              name:
-                expression: |
-                  resources.?configmap0.?metadata.?name.orValue("")
-              cluster_id:
-                # Pattern 12: dig() — safe deep traversal into nested structures
-                expression: |
-                  dig(resources, "configmap0.data.cluster_id")
-              cluster_metadata_region:
-                # Pattern 12b: dig() — traversing into a nested path
-                expression: |
-                  dig(resources, "configmap0.data.cluster_metadata")
-
-            extra:
-              feature_flags:
-                expression: |
-                  resources.?configmap1.?data.?feature_flags.orValue("")
-              max_replicas:
-                expression: |
-                  resources.?configmap1.?data.?max_replicas.orValue("0")
-              # Pattern 12c: dig() on secondary configmap
-              endpoint:
-                expression: |
-                  dig(resources, "configmap1.data.endpoint")
-
-            # ---------------------------------------------------------
-            # Pattern 9 (payload): nested ternary chains — multi-level branching
-            # ---------------------------------------------------------
-            overall_status:
+# ===========================================================================
+# Post-processing — Payload build with CEL expression patterns
+# ===========================================================================
+post:
+  payloads:
+    - name: "statusPayload"
+      build:
+        adapter: "cel-showcase"
+        conditions:
+          # ---------------------------------------------------------
+          # Pattern 9: has() + ternary — existence check with fallback
+          # Checks if all expected resources were discovered.
+          # ---------------------------------------------------------
+          - type: "Applied"
+            status:
               expression: |
-                has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1) ? (resources.?namespace0.?status.?phase.orValue("") == "Active" ? "Ready" : "Provisioning") : "Pending"
+                has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1)
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1)
+                ? "AllResourcesApplied"
+                : "ResourcesNotDiscovered"
+            message:
+              # Pattern 5 (payload): string concatenation with conditional parts
+              expression: |
+                has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1)
+                ? "All resources applied: "
+                  + resources.namespace0.metadata.name + ", "
+                  + resources.configmap0.metadata.name + ", "
+                  + resources.configmap1.metadata.name
+                : "One or more resources not yet discovered"
 
-            # Pattern 15: Go template rendering for payload values
-            cluster_url: "https://console.{{ .region }}.hyperfleet.io/clusters/{{ .clusterId }}"
+          # ---------------------------------------------------------
+          # Pattern 10: optional chaining ?.orValue() — safe navigation
+          # Safely reads namespace phase even if fields are missing.
+          # ---------------------------------------------------------
+          - type: "Available"
+            status:
+              expression: |
+                resources.?namespace0.?status.?phase.orValue("") == "Active"
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                resources.?namespace0.?status.?phase.orValue("Pending")
+            message:
+              expression: |
+                "Namespace phase: " + resources.?namespace0.?status.?phase.orValue("unknown")
 
-    postActions:
-      - name: "update-status"
-        apiCall:
-          method: "PATCH"
-          url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
-          body: "{{ .statusPayload }}"
+          # ---------------------------------------------------------
+          # Pattern 14: adapter.? — adapter execution metadata access
+          # Accesses adapter execution status and error details.
+          # ---------------------------------------------------------
+          - type: "Health"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success"
+                  && !adapter.?resourcesSkipped.orValue(false)
+                ? "True"
+                : "False"
+            reason:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "ResourcesSkipped"
+                  : "Healthy"
+            message:
+              # Pattern 5 (payload): multi-part string building
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "Adapter failed at phase ["
+                    + adapter.?executionError.?phase.orValue("unknown")
+                    + "] step ["
+                    + adapter.?executionError.?step.orValue("unknown")
+                    + "]: "
+                    + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
+                  : "Adapter execution completed successfully"
+
+        # Pattern 15: Go template rendering in payload values
+        observed_generation:
+          expression: "generation"
+        observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+
+        data:
+          # ---------------------------------------------------------
+          # Pattern 10 (payload): optional chaining for safe field access
+          # ---------------------------------------------------------
+          namespace:
+            name:
+              expression: |
+                resources.?namespace0.?metadata.?name.orValue("")
+            phase:
+              expression: |
+                resources.?namespace0.?status.?phase.orValue("")
+            labels_json:
+              # Pattern 13: toJson() — serialization of resource metadata
+              expression: |
+                has(resources.namespace0)
+                ? toJson(resources.namespace0.metadata.labels)
+                : "{}"
+
+          configmap:
+            name:
+              expression: |
+                resources.?configmap0.?metadata.?name.orValue("")
+            cluster_id:
+              # Pattern 12: dig() — safe deep traversal into nested structures
+              expression: |
+                dig(resources, "configmap0.data.cluster_id")
+            cluster_name:
+              # Pattern 12b: dig() — traversing into a nested path
+              expression: |
+                dig(resources, "configmap0.data.cluster_name")
+
+          extra:
+            feature_flags:
+              expression: |
+                resources.?configmap1.?data.?feature_flags.orValue("")
+            max_replicas:
+              expression: |
+                resources.?configmap1.?data.?max_replicas.orValue("0")
+            # Pattern 12c: dig() on secondary configmap
+            endpoint:
+              expression: |
+                dig(resources, "configmap1.data.endpoint")
+
+          # ---------------------------------------------------------
+          # Pattern 9 (payload): nested ternary chains — multi-level branching
+          # ---------------------------------------------------------
+          overall_status:
+            expression: |
+              has(resources.namespace0) && has(resources.configmap0) && has(resources.configmap1) ? (resources.?namespace0.?status.?phase.orValue("") == "Active" ? "Ready" : "Provisioning") : "Pending"
+
+          # Pattern 15: Go template rendering for payload values
+          cluster_url: "https://console.{{ .region }}.hyperfleet.io/clusters/{{ .clusterId }}"
+
+  post_actions:
+    - name: "update-status"
+      api_call:
+        method: "PATCH"
+        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
+        body: "{{ .statusPayload }}"

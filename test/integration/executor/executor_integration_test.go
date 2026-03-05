@@ -56,93 +56,89 @@ func createTestEvent(clusterId string) *event.Event {
 func createTestConfig(apiBaseURL string) *config_loader.Config {
 	_ = apiBaseURL // Kept for compatibility; base URL comes from env params.
 	return &config_loader.Config{
-		APIVersion: config_loader.APIVersionV1Alpha1,
-		Kind:       config_loader.ExpectedKindConfig,
-		Metadata: config_loader.Metadata{
-			Name: "test-adapter",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
 		},
-		Spec: config_loader.ConfigSpec{
-			Adapter: config_loader.AdapterInfo{Version: "1.0.0"},
-			Clients: config_loader.ClientsConfig{
-				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-					Timeout:       10 * time.Second,
-					RetryAttempts: 1,
-					RetryBackoff:  hyperfleet_api.BackoffConstant,
-				},
+		Clients: config_loader.ClientsConfig{
+			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Timeout:       10 * time.Second,
+				RetryAttempts: 1,
+				RetryBackoff:  hyperfleet_api.BackoffConstant,
 			},
-			Params: []config_loader.Parameter{
-				{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-				{Name: "hyperfleetApiVersion", Source: "env.HYPERFLEET_API_VERSION", Default: "v1", Required: false},
-				{Name: "clusterId", Source: "event.id", Required: true},
-			},
-			Preconditions: []config_loader.Precondition{
-				{
-					ActionBase: config_loader.ActionBase{
-						Name: "clusterStatus",
-						APICall: &config_loader.APICall{
-							Method:  "GET",
-							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
-							Timeout: "5s",
-						},
+		},
+		Params: []config_loader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiVersion", Source: "env.HYPERFLEET_API_VERSION", Default: "v1", Required: false},
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []config_loader.Precondition{
+			{
+				ActionBase: config_loader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &config_loader.APICall{
+						Method:  "GET",
+						URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+						Timeout: "5s",
 					},
-					Capture: []config_loader.CaptureField{
-						{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "metadata.name"}},
-						{
-							Name: "readyConditionStatus",
-							FieldExpressionDef: config_loader.FieldExpressionDef{
-								Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0
+				},
+				Capture: []config_loader.CaptureField{
+					{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "name"}},
+					{
+						Name: "readyConditionStatus",
+						FieldExpressionDef: config_loader.FieldExpressionDef{
+							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0
   ? status.conditions.filter(c, c.type == "Ready")[0].status
   : "False"`,
+						},
+					},
+					{Name: "region", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.region"}},
+					{Name: "cloudProvider", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.provider"}},
+					{Name: "vpcId", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.vpc_id"}},
+				},
+				Conditions: []config_loader.Condition{
+					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+					{Field: "cloudProvider", Operator: "in", Value: []interface{}{"aws", "gcp", "azure"}},
+				},
+			},
+		},
+		Resources: []config_loader.Resource{},
+		Post: &config_loader.PostConfig{
+			Payloads: []config_loader.Payload{
+				{
+					Name: "clusterStatusPayload",
+					Build: map[string]interface{}{
+						"conditions": map[string]interface{}{
+							"health": map[string]interface{}{
+								"status": map[string]interface{}{
+									"expression": `adapter.executionStatus == "success" && !adapter.resourcesSkipped`,
+								},
+								"reason": map[string]interface{}{
+									"expression": `adapter.resourcesSkipped ? "PreconditionNotMet" : (adapter.errorReason != "" ? adapter.errorReason : "Healthy")`,
+								},
+								"message": map[string]interface{}{
+									"expression": `adapter.skipReason != "" ? adapter.skipReason : (adapter.errorMessage != "" ? adapter.errorMessage : "All adapter operations completed successfully")`,
+								},
 							},
 						},
-						{Name: "region", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.region"}},
-						{Name: "cloudProvider", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.provider"}},
-						{Name: "vpcId", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.vpc_id"}},
-					},
-					Conditions: []config_loader.Condition{
-						{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
-						{Field: "cloudProvider", Operator: "in", Value: []interface{}{"aws", "gcp", "azure"}},
+						"clusterId": map[string]interface{}{
+							"value": "{{ .clusterId }}",
+						},
+						"clusterName": map[string]interface{}{
+							"expression": `clusterName != "" ? clusterName : "unknown"`,
+						},
 					},
 				},
 			},
-			Resources: []config_loader.Resource{},
-			Post: &config_loader.PostConfig{
-				Payloads: []config_loader.Payload{
-					{
-						Name: "clusterStatusPayload",
-						Build: map[string]interface{}{
-							"conditions": map[string]interface{}{
-								"health": map[string]interface{}{
-									"status": map[string]interface{}{
-										"expression": `adapter.executionStatus == "success" && !adapter.resourcesSkipped`,
-									},
-									"reason": map[string]interface{}{
-										"expression": `adapter.resourcesSkipped ? "PreconditionNotMet" : (adapter.errorReason != "" ? adapter.errorReason : "Healthy")`,
-									},
-									"message": map[string]interface{}{
-										"expression": `adapter.skipReason != "" ? adapter.skipReason : (adapter.errorMessage != "" ? adapter.errorMessage : "All adapter operations completed successfully")`,
-									},
-								},
-							},
-							"clusterId": map[string]interface{}{
-								"value": "{{ .clusterId }}",
-							},
-							"clusterName": map[string]interface{}{
-								"expression": `clusterName != "" ? clusterName : "unknown"`,
-							},
-						},
-					},
-				},
-				PostActions: []config_loader.PostAction{
-					{
-						ActionBase: config_loader.ActionBase{
-							Name: "reportClusterStatus",
-							APICall: &config_loader.APICall{
-								Method:  "POST",
-								URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses",
-								Body:    "{{ .clusterStatusPayload }}",
-								Timeout: "5s",
-							},
+			PostActions: []config_loader.PostAction{
+				{
+					ActionBase: config_loader.ActionBase{
+						Name: "reportClusterStatus",
+						APICall: &config_loader.APICall{
+							Method:  "POST",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses",
+							Body:    "{{ .clusterStatusPayload }}",
+							Timeout: "5s",
 						},
 					},
 				},
@@ -281,9 +277,9 @@ func TestExecutor_PreconditionNotMet(t *testing.T) {
 
 	// Set cluster to a phase that doesn't match conditions
 	mockAPI.SetClusterResponse(map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name": "test-cluster",
-		},
+		"id":   "test-cluster-id",
+		"name": "test-cluster",
+		"kind": "Cluster",
 		"spec": map[string]interface{}{
 			"region":   "us-east-1",
 			"provider": "aws",
@@ -499,7 +495,7 @@ func TestExecutor_CELExpressionEvaluation(t *testing.T) {
 
 	// Create config with CEL expression precondition
 	config := createTestConfig(mockAPI.URL())
-	config.Spec.Preconditions = []config_loader.Precondition{
+	config.Preconditions = []config_loader.Precondition{
 		{
 			ActionBase: config_loader.ActionBase{
 				Name: "clusterStatus",
@@ -510,7 +506,7 @@ func TestExecutor_CELExpressionEvaluation(t *testing.T) {
 				},
 			},
 			Capture: []config_loader.CaptureField{
-				{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "metadata.name"}},
+				{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "name"}},
 				{
 					Name: "readyConditionStatus",
 					FieldExpressionDef: config_loader.FieldExpressionDef{
@@ -666,9 +662,11 @@ func TestExecutor_Handler_PreconditionNotMet_ReturnsNil(t *testing.T) {
 	defer mockAPI.Close()
 
 	mockAPI.SetClusterResponse(map[string]interface{}{
-		"metadata": map[string]interface{}{"name": "test"},
-		"spec":     map[string]interface{}{"region": "us-east-1", "provider": "aws"},
-		"status":   map[string]interface{}{"phase": "Terminating"}, // Won't match
+		"id":     "test-id",
+		"name":   "test",
+		"kind":   "Cluster",
+		"spec":   map[string]interface{}{"region": "us-east-1", "provider": "aws"},
+		"status": map[string]interface{}{"phase": "Terminating"}, // Won't match
 	})
 
 	t.Setenv("HYPERFLEET_API_BASE_URL", mockAPI.URL())
@@ -924,85 +922,81 @@ func TestExecutor_LogAction(t *testing.T) {
 
 	// Create config with log actions in preconditions and post-actions
 	config := &config_loader.Config{
-		APIVersion: config_loader.APIVersionV1Alpha1,
-		Kind:       config_loader.ExpectedKindConfig,
-		Metadata: config_loader.Metadata{
-			Name: "log-test-adapter",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "log-test-adapter",
+			Version: "1.0.0",
 		},
-		Spec: config_loader.ConfigSpec{
-			Adapter: config_loader.AdapterInfo{Version: "1.0.0"},
-			Clients: config_loader.ClientsConfig{
-				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-					Timeout: 10 * time.Second, RetryAttempts: 1,
+		Clients: config_loader.ClientsConfig{
+			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Timeout: 10 * time.Second, RetryAttempts: 1,
+			},
+		},
+		Params: []config_loader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiVersion", Default: "v1"},
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []config_loader.Precondition{
+			{
+				// Log action only - no API call or conditions
+				ActionBase: config_loader.ActionBase{
+					Name: "logStart",
+					Log: &config_loader.LogAction{
+						Message: "Starting processing for cluster {{ .clusterId }}",
+						Level:   "info",
+					},
 				},
 			},
-			Params: []config_loader.Parameter{
-				{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-				{Name: "hyperfleetApiVersion", Default: "v1"},
-				{Name: "clusterId", Source: "event.id", Required: true},
+			{
+				// Log action before API call
+				ActionBase: config_loader.ActionBase{
+					Name: "logBeforeAPICall",
+					Log: &config_loader.LogAction{
+						Message: "About to check cluster status for {{ .clusterId }}",
+						Level:   "debug",
+					},
+				},
 			},
-			Preconditions: []config_loader.Precondition{
+			{
+				ActionBase: config_loader.ActionBase{
+					Name: "checkCluster",
+					APICall: &config_loader.APICall{
+						Method: "GET",
+						URL:    "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+					},
+				},
+				Capture: []config_loader.CaptureField{
+					{
+						Name: "readyConditionStatus",
+						FieldExpressionDef: config_loader.FieldExpressionDef{
+							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
+						},
+					},
+				},
+				Conditions: []config_loader.Condition{
+					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+				},
+			},
+		},
+		Post: &config_loader.PostConfig{
+			PostActions: []config_loader.PostAction{
 				{
-					// Log action only - no API call or conditions
+					// Log action in post-actions
 					ActionBase: config_loader.ActionBase{
-						Name: "logStart",
+						Name: "logCompletion",
 						Log: &config_loader.LogAction{
-							Message: "Starting processing for cluster {{ .clusterId }}",
+							Message: "Completed processing cluster {{ .clusterId }} with resource {{ .resourceId }}",
 							Level:   "info",
 						},
 					},
 				},
 				{
-					// Log action before API call
+					// Log with warning level
 					ActionBase: config_loader.ActionBase{
-						Name: "logBeforeAPICall",
+						Name: "logWarning",
 						Log: &config_loader.LogAction{
-							Message: "About to check cluster status for {{ .clusterId }}",
-							Level:   "debug",
-						},
-					},
-				},
-				{
-					ActionBase: config_loader.ActionBase{
-						Name: "checkCluster",
-						APICall: &config_loader.APICall{
-							Method: "GET",
-							URL:    "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
-						},
-					},
-					Capture: []config_loader.CaptureField{
-						{
-							Name: "readyConditionStatus",
-							FieldExpressionDef: config_loader.FieldExpressionDef{
-								Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
-							},
-						},
-					},
-					Conditions: []config_loader.Condition{
-						{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
-					},
-				},
-			},
-			Post: &config_loader.PostConfig{
-				PostActions: []config_loader.PostAction{
-					{
-						// Log action in post-actions
-						ActionBase: config_loader.ActionBase{
-							Name: "logCompletion",
-							Log: &config_loader.LogAction{
-								Message: "Completed processing cluster {{ .clusterId }} with resource {{ .resourceId }}",
-								Level:   "info",
-							},
-						},
-					},
-					{
-						// Log with warning level
-						ActionBase: config_loader.ActionBase{
-							Name: "logWarning",
-							Log: &config_loader.LogAction{
-								Message: "This is a warning for cluster {{ .clusterId }}",
-								Level:   "warning",
-							},
+							Message: "This is a warning for cluster {{ .clusterId }}",
+							Level:   "warning",
 						},
 					},
 				},
@@ -1023,7 +1017,7 @@ func TestExecutor_LogAction(t *testing.T) {
 	}
 
 	// Execute
-	evt := createTestEvent("log-test-cluster")
+	evt := createTestEvent("log-test-clusterx")
 	result := exec.Execute(context.Background(), evt)
 
 	// Should succeed
@@ -1175,88 +1169,84 @@ func TestExecutor_ExecutionError_CELAccess(t *testing.T) {
 
 	// Create config with CEL expressions that access adapter.executionError
 	config := &config_loader.Config{
-		APIVersion: config_loader.APIVersionV1Alpha1,
-		Kind:       config_loader.ExpectedKindConfig,
-		Metadata: config_loader.Metadata{
-			Name: "executionError-cel-test",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "executionError-cel-test",
+			Version: "1.0.0",
 		},
-		Spec: config_loader.ConfigSpec{
-			Adapter: config_loader.AdapterInfo{Version: "1.0.0"},
-			Clients: config_loader.ClientsConfig{
-				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-					Timeout: 10 * time.Second, RetryAttempts: 1, RetryBackoff: hyperfleet_api.BackoffConstant,
+		Clients: config_loader.ClientsConfig{
+			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Timeout: 10 * time.Second, RetryAttempts: 1, RetryBackoff: hyperfleet_api.BackoffConstant,
+			},
+		},
+		Params: []config_loader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiVersion", Default: "v1"},
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []config_loader.Precondition{
+			{
+				ActionBase: config_loader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &config_loader.APICall{
+						Method:  "GET",
+						URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+						Timeout: "5s",
+					},
+				},
+				Capture: []config_loader.CaptureField{
+					{
+						Name: "readyConditionStatus",
+						FieldExpressionDef: config_loader.FieldExpressionDef{
+							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
+						},
+					},
+				},
+				Conditions: []config_loader.Condition{
+					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
 				},
 			},
-			Params: []config_loader.Parameter{
-				{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-				{Name: "hyperfleetApiVersion", Default: "v1"},
-				{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Resources: []config_loader.Resource{},
+		Post: &config_loader.PostConfig{
+			Payloads: []config_loader.Payload{
+				{
+					Name: "errorReportPayload",
+					Build: map[string]interface{}{
+						// Test accessing adapter.executionError fields via CEL
+						"hasError": map[string]interface{}{
+							"expression": "has(adapter.executionError) && adapter.executionError != null",
+						},
+						"errorPhase": map[string]interface{}{
+							"expression": "has(adapter.executionError) && adapter.executionError != null ? adapter.executionError.phase : \"no_error\"",
+						},
+						"errorStep": map[string]interface{}{
+							"expression": "has(adapter.executionError) && adapter.executionError != null ? adapter.executionError.step : \"no_step\"",
+						},
+						"errorMessage": map[string]interface{}{
+							"expression": "has(adapter.executionError) && adapter.executionError != null ? adapter.executionError.message : \"no_message\"",
+						},
+						// Also test that other adapter fields still work
+						"executionStatus": map[string]interface{}{
+							"expression": "adapter.executionStatus",
+						},
+						"errorReason": map[string]interface{}{
+							"expression": "adapter.errorReason",
+						},
+						"clusterId": map[string]interface{}{
+							"value": "{{ .clusterId }}",
+						},
+					},
+				},
 			},
-			Preconditions: []config_loader.Precondition{
+			PostActions: []config_loader.PostAction{
 				{
 					ActionBase: config_loader.ActionBase{
-						Name: "clusterStatus",
+						Name: "reportError",
 						APICall: &config_loader.APICall{
-							Method:  "GET",
-							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+							Method:  "POST",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/error-report",
+							Body:    "{{ .errorReportPayload }}",
 							Timeout: "5s",
-						},
-					},
-					Capture: []config_loader.CaptureField{
-						{
-							Name: "readyConditionStatus",
-							FieldExpressionDef: config_loader.FieldExpressionDef{
-								Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
-							},
-						},
-					},
-					Conditions: []config_loader.Condition{
-						{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
-					},
-				},
-			},
-			Resources: []config_loader.Resource{},
-			Post: &config_loader.PostConfig{
-				Payloads: []config_loader.Payload{
-					{
-						Name: "errorReportPayload",
-						Build: map[string]interface{}{
-							// Test accessing adapter.executionError fields via CEL
-							"hasError": map[string]interface{}{
-								"expression": "has(adapter.executionError) && adapter.executionError != null",
-							},
-							"errorPhase": map[string]interface{}{
-								"expression": "has(adapter.executionError) && adapter.executionError != null ? adapter.executionError.phase : \"no_error\"",
-							},
-							"errorStep": map[string]interface{}{
-								"expression": "has(adapter.executionError) && adapter.executionError != null ? adapter.executionError.step : \"no_step\"",
-							},
-							"errorMessage": map[string]interface{}{
-								"expression": "has(adapter.executionError) && adapter.executionError != null ? adapter.executionError.message : \"no_message\"",
-							},
-							// Also test that other adapter fields still work
-							"executionStatus": map[string]interface{}{
-								"expression": "adapter.executionStatus",
-							},
-							"errorReason": map[string]interface{}{
-								"expression": "adapter.errorReason",
-							},
-							"clusterId": map[string]interface{}{
-								"value": "{{ .clusterId }}",
-							},
-						},
-					},
-				},
-				PostActions: []config_loader.PostAction{
-					{
-						ActionBase: config_loader.ActionBase{
-							Name: "reportError",
-							APICall: &config_loader.APICall{
-								Method:  "POST",
-								URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/error-report",
-								Body:    "{{ .errorReportPayload }}",
-								Timeout: "5s",
-							},
 						},
 					},
 				},
@@ -1350,54 +1340,50 @@ func TestExecutor_PayloadBuildFailure(t *testing.T) {
 
 	// Create config with invalid CEL expression in payload build (will cause build failure)
 	config := &config_loader.Config{
-		APIVersion: config_loader.APIVersionV1Alpha1,
-		Kind:       config_loader.ExpectedKindConfig,
-		Metadata: config_loader.Metadata{
-			Name: "payload-build-fail-test",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "payload-build-fail-test",
+			Version: "1.0.0",
 		},
-		Spec: config_loader.ConfigSpec{
-			Adapter: config_loader.AdapterInfo{Version: "1.0.0"},
-			Clients: config_loader.ClientsConfig{
-				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-					Timeout: 10 * time.Second, RetryAttempts: 1,
+		Clients: config_loader.ClientsConfig{
+			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Timeout: 10 * time.Second, RetryAttempts: 1,
+			},
+		},
+		Params: []config_loader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiVersion", Default: "v1"},
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		Preconditions: []config_loader.Precondition{
+			{
+				ActionBase: config_loader.ActionBase{Name: "simpleCheck"},
+				Conditions: []config_loader.Condition{
+					{Field: "clusterId", Operator: "equals", Value: "test-cluster"},
 				},
 			},
-			Params: []config_loader.Parameter{
-				{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-				{Name: "hyperfleetApiVersion", Default: "v1"},
-				{Name: "clusterId", Source: "event.id", Required: true},
-			},
-			Preconditions: []config_loader.Precondition{
+		},
+		Resources: []config_loader.Resource{},
+		Post: &config_loader.PostConfig{
+			Payloads: []config_loader.Payload{
 				{
-					ActionBase: config_loader.ActionBase{Name: "simpleCheck"},
-					Conditions: []config_loader.Condition{
-						{Field: "clusterId", Operator: "equals", Value: "test-cluster"},
-					},
-				},
-			},
-			Resources: []config_loader.Resource{},
-			Post: &config_loader.PostConfig{
-				Payloads: []config_loader.Payload{
-					{
-						Name: "badPayload",
-						Build: map[string]interface{}{
-							// Use template that references non-existent parameter
-							"field": map[string]interface{}{
-								"value": "{{ .nonExistentParam }}",
-							},
+					Name: "badPayload",
+					Build: map[string]interface{}{
+						// Use template that references non-existent parameter
+						"field": map[string]interface{}{
+							"value": "{{ .nonExistentParam }}",
 						},
 					},
 				},
-				PostActions: []config_loader.PostAction{
-					{
-						ActionBase: config_loader.ActionBase{
-							Name: "shouldNotExecute",
-							APICall: &config_loader.APICall{
-								Method:  "POST",
-								URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses",
-								Body:    "{{ .badPayload }}",
-								Timeout: "5s",
-							},
+			},
+			PostActions: []config_loader.PostAction{
+				{
+					ActionBase: config_loader.ActionBase{
+						Name: "shouldNotExecute",
+						APICall: &config_loader.APICall{
+							Method:  "POST",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses",
+							Body:    "{{ .badPayload }}",
+							Timeout: "5s",
 						},
 					},
 				},

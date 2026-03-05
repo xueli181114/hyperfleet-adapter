@@ -1,344 +1,311 @@
 # Task configuration for dry-run testing
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: dryrun-task
-  labels:
-    hyperfleet.io/adapter-type: dryrun
-
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
-
-    - name: "clusterKind"
-      source: "event.kind"
-      type: "string"
-      default: "Cluster"
-
-    - name: "generation"
-      source: "event.generation"
-      type: "string"
-      required: true
-
-    - name: "region"
-      source: "env.REGION"
-      type: "string"
-      default: "us-east-1"
-
-    - name: "adapterName"
-      source: "env.ADAPTER_NAME"
-      type: "string"
-      default: "dry-run-adapter"
-
-  preconditions:
-    - name: "fetch-cluster"
-      apiCall:
-        method: "GET"
-        url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
-        timeout: 10s
-      capture:
-        - name: "clusterName"
-          field: "name"
-        - name: "clusterStatus"
-          expression: |
-            status.conditions.filter(c, c.type == "Ready").size() > 0
-              ? status.conditions.filter(c, c.type == "Ready")[0].status
-              : "False"
-        - name: "computeNodes"
-          field: "nodes.compute"
-        #TODO: research why we can not have {{ now }} as expression
-        - name: "timestamp"
-          expression:  "\"2006-01-02T15:04:05Z07:00\""
-
-      conditions:
-        - field: "clusterStatus"
-          operator: "notEquals"
-          value: "True"
-
-  resources:
-    - name: "resource0"
-      transport: 
-        client: maestro
-        maestro:
-          targetCluster: cluster1
-      manifest:
-        apiVersion: work.open-cluster-management.io/v1
-        kind: ManifestWork
-        metadata:
-          # ManifestWork name - must be unique within consumer namespace
-          #name: "manifestwork-{{ .clusterId }}"
-          name: "manifestwork-symbol000"
-
-          # Labels for identification, filtering, and management
-          labels:
-            # HyperFleet tracking labels
-            hyperfleet.io/cluster-id: "{{ .clusterId }}"
-            hyperfleet.io/adapter: "{{ .adapterName }}"
-            hyperfleet.io/component: "infrastructure"
-            hyperfleet.io/generation: "{{ .generation }}"
-            hyperfleet.io/resource-group: "cluster-setup"
-
-            # Maestro-specific labels
-            maestro.io/source-id: "{{ .adapterName }}"
-            maestro.io/resource-type: "manifestwork"
-            maestro.io/priority: "normal"
-
-            # Standard Kubernetes application labels
-            app.kubernetes.io/name: "aro-hcp-cluster"
-            app.kubernetes.io/instance: "{{ .clusterId }}"
-            app.kubernetes.io/version: "v1.0.0"
-            app.kubernetes.io/component: "infrastructure"
-            app.kubernetes.io/part-of: "hyperfleet"
-            app.kubernetes.io/managed-by: "hyperfleet-adapter"
-            app.kubernetes.io/created-by: "{{ .adapterName }}"
-
-          # Annotations for metadata and operational information
-          annotations:
-            # Tracking and lifecycle
-            hyperfleet.io/created-by: "hyperfleet-adapter-framework"
-            hyperfleet.io/managed-by: "{{ .adapterName }}"
-            hyperfleet.io/generation: "{{ .generation }}"
-            hyperfleet.io/cluster-name: "{{ .clusterId }}"
-            hyperfleet.io/deployment-time: "{{ .timestamp }}"
-
-            # Maestro-specific annotations
-            maestro.io/applied-time: "{{ .timestamp }}"
-            maestro.io/source-adapter: "{{ .adapterName }}"
-
-            # Operational annotations
-            deployment.hyperfleet.io/strategy: "rolling"
-            deployment.hyperfleet.io/timeout: "300s"
-            monitoring.hyperfleet.io/enabled: "true"
-
-            # Documentation
-            description: "Complete cluster setup including namespace, configuration, and RBAC"
-            documentation: "https://docs.hyperfleet.io/adapters/aro-hcp"
-
-        # ManifestWork specification
-        spec:
-          # ============================================================================
-          # Workload - Contains the Kubernetes manifests to deploy
-          # ============================================================================
-          workload:
-            # Kubernetes manifests array - injected by framework from business logic config
-            manifests:
+params:
+  - name: clusterId
+    required: true
+    source: event.id
+    type: string
+  - default: Cluster
+    name: clusterKind
+    source: event.kind
+    type: string
+  - name: generation
+    required: true
+    source: event.generation
+    type: string
+  - default: us-east-1
+    name: region
+    source: env.REGION
+    type: string
+  - default: dry-run-adapter
+    name: adapterName
+    source: env.ADAPTER_NAME
+    type: string
+preconditions:
+  - api_call:
+      method: GET
+      timeout: 10s
+      url: /api/hyperfleet/v1/clusters/{{ .clusterId }}
+    capture:
+      - field: name
+        name: clusterName
+      - expression: |
+          status.conditions.filter(c, c.type == "Ready").size() > 0
+            ? status.conditions.filter(c, c.type == "Ready")[0].status
+            : "False"
+        name: clusterStatus
+      - field: nodes.compute
+        name: computeNodes
+      #TODO: research why we can not have {{ now }} as expression
+      - expression: '"2006-01-02T15:04:05Z07:00"'
+        name: timestamp
+    conditions:
+      - field: clusterStatus
+        operator: notEquals
+        value: "True"
+    name: fetch-cluster
+resources:
+  - discovery:
+      #by_name: "cluster-{{ .clusterId }}-config"
+      #by_name: "manifestwork-symbol000"
+      by_selectors:
+        label_selector:
+          maestro.io/resource-type: manifestwork
+      namespace: '*'
+    manifest:
+      apiVersion: work.open-cluster-management.io/v1
+      kind: ManifestWork
+      metadata:
+        # Annotations for metadata and operational information
+        annotations:
+          # Operational annotations
+          deployment.hyperfleet.io/strategy: rolling
+          deployment.hyperfleet.io/timeout: 300s
+          # Documentation
+          description: Complete cluster setup including namespace, configuration, and RBAC
+          documentation: https://docs.hyperfleet.io/adapters/aro-hcp
+          hyperfleet.io/cluster-name: '{{ .clusterId }}'
+          # Tracking and lifecycle
+          hyperfleet.io/created-by: hyperfleet-adapter-framework
+          hyperfleet.io/deployment-time: '{{ .timestamp }}'
+          hyperfleet.io/generation: '{{ .generation }}'
+          hyperfleet.io/managed-by: '{{ .adapterName }}'
+          # Maestro-specific annotations
+          maestro.io/applied-time: '{{ .timestamp }}'
+          maestro.io/source-adapter: '{{ .adapterName }}'
+          monitoring.hyperfleet.io/enabled: "true"
+        # Labels for identification, filtering, and management
+        labels:
+          app.kubernetes.io/component: infrastructure
+          app.kubernetes.io/created-by: '{{ .adapterName }}'
+          app.kubernetes.io/instance: '{{ .clusterId }}'
+          app.kubernetes.io/managed-by: hyperfleet-adapter
+          # Standard Kubernetes application labels
+          app.kubernetes.io/name: aro-hcp-cluster
+          app.kubernetes.io/part-of: hyperfleet
+          app.kubernetes.io/version: v1.0.0
+          hyperfleet.io/adapter: '{{ .adapterName }}'
+          # HyperFleet tracking labels
+          hyperfleet.io/cluster-id: '{{ .clusterId }}'
+          hyperfleet.io/component: infrastructure
+          hyperfleet.io/generation: '{{ .generation }}'
+          hyperfleet.io/resource-group: cluster-setup
+          maestro.io/priority: normal
+          maestro.io/resource-type: manifestwork
+          # Maestro-specific labels
+          maestro.io/source-id: '{{ .adapterName }}'
+        # ManifestWork name - must be unique within consumer namespace
+        #name: "manifestwork-{{ .clusterId }}"
+        name: manifestwork-symbol000
+      # ManifestWork specification
+      spec:
+        # ============================================================================
+        # Delete Options - How resources should be removed
+        # ============================================================================
+        deleteOption:
+          # Grace period for graceful deletion (seconds)
+          gracePeriodSeconds: 30
+          # Propagation policy for resource deletion
+          # - "Foreground": Wait for dependent resources to be deleted first
+          # - "Background": Delete immediately, let cluster handle dependents
+          # - "Orphan": Leave resources on cluster when ManifestWork is deleted
+          propagationPolicy: Foreground
+        # ============================================================================
+        # Manifest Configurations - Per-resource settings for update and feedback
+        # ============================================================================
+        manifestConfigs:
+          # ========================================================================
+          # Configuration for Namespace resources
+          # ========================================================================
+          - feedbackRules:
+              - jsonPaths:
+                  - name: phase # Namespace phase (Active, Terminating)
+                    path: .status.phase
+                type: JSONPaths # Use JSON path expressions for status feedback
+            resourceIdentifier:
+              group: "" # Core API group (empty for v1 resources)
+              name: '{{ .clusterId }}' # Specific resource name
+              resource: namespaces # Resource type
+            updateStrategy:
+              type: ServerSideApply # Use server-side apply for namespaces
+          - resourceIdentifier:
+              group: ""
+              name: '{{ .clusterId }}-config-symbol2222'
+              namespace: '{{ .clusterId }}'
+              resource: configmaps
+            updateStrategy:
+              type: ServerSideApply
+        # ============================================================================
+        # Workload - Contains the Kubernetes manifests to deploy
+        # ============================================================================
+        workload:
+          # Kubernetes manifests array - injected by framework from business logic config
+          manifests:
             - apiVersion: v1
               kind: Namespace
               metadata:
-                name: "{{ .clusterId | lower }}"
-                labels:
-                  hyperfleet.io/cluster-id: "{{ .clusterId }}"
-                  hyperfleet.io/managed-by: "{{ .metadata.name }}"
-                  hyperfleet.io/resource-type: "namespace"
-                  hyperfleet.io/label-for-discovery: "namespace-symbol111"
                 annotations:
-                  hyperfleet.io/created-by: "hyperfleet-adapter"
-                  hyperfleet.io/generation: "{{ .generation }}"
+                  hyperfleet.io/created-by: hyperfleet-adapter
+                  hyperfleet.io/generation: '{{ .generation }}'
+                labels:
+                  hyperfleet.io/cluster-id: '{{ .clusterId }}'
+                  hyperfleet.io/label-for-discovery: namespace-symbol111
+                  hyperfleet.io/managed-by: '{{ .adapter.name }}'
+                  hyperfleet.io/resource-type: namespace
+                name: '{{ .clusterId }}'
             - apiVersion: v1
+              data:
+                cluster_id: '{{ .clusterId }}'
+                cluster_name: '{{ .clusterName }}'
               kind: ConfigMap
               metadata:
-                name: "{{ .clusterId }}-config-symbol2222"
-                namespace: "{{ .clusterId }}"
-                labels:
-                  hyperfleet.io/cluster-id: "{{ .clusterId }}"
                 annotations:
-                  hyperfleet.io/generation: "{{ .generation }}"
-              data:
-                cluster_id: "{{ .clusterId }}"
-                cluster_name: "{{ .clusterName }}"
-
-          # ============================================================================
-          # Delete Options - How resources should be removed
-          # ============================================================================
-          deleteOption:
-            # Propagation policy for resource deletion
-            # - "Foreground": Wait for dependent resources to be deleted first
-            # - "Background": Delete immediately, let cluster handle dependents
-            # - "Orphan": Leave resources on cluster when ManifestWork is deleted
-            propagationPolicy: "Foreground"
-
-            # Grace period for graceful deletion (seconds)
-            gracePeriodSeconds: 30
-
-          # ============================================================================
-          # Manifest Configurations - Per-resource settings for update and feedback
-          # ============================================================================
-          manifestConfigs:
-            # ========================================================================
-            # Configuration for Namespace resources
-            # ========================================================================
-            - resourceIdentifier:
-                group: ""                           # Core API group (empty for v1 resources)
-                resource: "namespaces"              # Resource type
-                name: "{{ .clusterId | lower }}"    # Specific resource name
-              updateStrategy:
-                type: "ServerSideApply"             # Use server-side apply for namespaces
-              feedbackRules:
-                - type: "JSONPaths"                 # Use JSON path expressions for status feedback
-                  jsonPaths:
-                    - name: "phase"                 # Namespace phase (Active, Terminating)
-                      path: ".status.phase"
-            - resourceIdentifier:
-                group: ""
-                resource: "configmaps"
-                namespace: "{{ .clusterId | lower }}"
-                name: "{{ .clusterId | lower }}-config-symbol2222"
-              updateStrategy:
-                type: "ServerSideApply"
-
-      discovery:
-        #byName: "cluster-{{ .clusterId }}-config"
-        #byName: "manifestwork-symbol000"
-        bySelectors:
-          labelSelector:
-            maestro.io/resource-type: manifestwork
-
-      # Discover sub-resources within the manifestWork
-      # This approach can be used to use the discovery name to parameter level
-      # This can support jsonPath to dig into the resource status. like discoveryNamespace.status.conditions[?(@.type=="Ready")].status
-      nestedDiscoveries:
-        - name: "namespace0"
-          discovery:
-            bySelectors:
-              labelSelector:
-                hyperfleet.io/label-for-discovery: "namespace-symbol111"
-        - name: "configmap0"
-          discovery:
-            byName: "{{ .clusterId }}-config-symbol2222"
-
-  post:
-    payloads:
-      - name: "statusPayload"
-        build:
-          adapter: "dryrun-maestro"
-          conditions:
-            # Applied: Was the ManifestWork applied by Maestro?
-            - type: "Applied"
-              status:
-                expression: |
-                  has(resources.resource0)
-                    && has(resources.resource0.status)
-                    && has(resources.resource0.status.conditions)
-                    && resources.resource0.status.conditions.filter(c, c.type == "Applied").size() > 0
-                  ? resources.resource0.status.conditions.filter(c, c.type == "Applied")[0].status
-                  : "False"
-              reason:
-                expression: |
-                  has(resources.resource0)
-                    && has(resources.resource0.status)
-                    && has(resources.resource0.status.conditions)
-                    && resources.resource0.status.conditions.filter(c, c.type == "Applied").size() > 0
-                  ? resources.resource0.status.conditions.filter(c, c.type == "Applied")[0].reason
-                  : "ManifestWorkNotDiscovered"
-              message:
-                expression: |
-                  has(resources.resource0)
-                    && has(resources.resource0.status)
-                    && has(resources.resource0.status.conditions)
-                    && resources.resource0.status.conditions.filter(c, c.type == "Applied").size() > 0
-                  ? resources.resource0.status.conditions.filter(c, c.type == "Applied")[0].message
-                  : "ManifestWork not yet discovered or status unavailable"
-
-            # Available: Are all sub-resources available on the target cluster?
-            - type: "Available"
-              status:
-                expression: |
-                  has(resources.resource0)
-                    && has(resources.resource0.status)
-                    && has(resources.resource0.status.conditions)
-                    && resources.resource0.status.conditions.filter(c, c.type == "Available").size() > 0
-                  ? resources.resource0.status.conditions.filter(c, c.type == "Available")[0].status
-                  : "False"
-              reason:
-                expression: |
-                  has(resources.resource0)
-                    && has(resources.resource0.status)
-                    && has(resources.resource0.status.conditions)
-                    && resources.resource0.status.conditions.filter(c, c.type == "Available").size() > 0
-                  ? resources.resource0.status.conditions.filter(c, c.type == "Available")[0].reason
-                  : "ResourcesNotYetAvailable"
-              message:
-                expression: |
-                  has(resources.resource0)
-                    && has(resources.resource0.status)
-                    && has(resources.resource0.status.conditions)
-                    && resources.resource0.status.conditions.filter(c, c.type == "Available").size() > 0
-                  ? resources.resource0.status.conditions.filter(c, c.type == "Available")[0].message
-                  : "ManifestWork not yet discovered or resources not available"
-
-            # Health: Adapter execution status — surfaces errors from any phase
-            - type: "Health"
-              status:
-                expression: |
-                  adapter.?executionStatus.orValue("") == "success"
-                    && !adapter.?resourcesSkipped.orValue(false)
-                  ? "True"
-                  : "False"
-              reason:
-                expression: |
-                  adapter.?executionStatus.orValue("") != "success"
-                  ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
-                  : adapter.?resourcesSkipped.orValue(false)
-                    ? "ResourcesSkipped"
-                    : "Healthy"
-              message:
-                expression: |
-                  adapter.?executionStatus.orValue("") != "success"
-                  ? "Adapter failed at phase ["
-                      + adapter.?executionError.?phase.orValue("unknown")
-                      + "] step ["
-                      + adapter.?executionError.?step.orValue("unknown")
-                      + "]: "
-                      + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
-                  : adapter.?resourcesSkipped.orValue(false)
-                    ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
-                    : "Adapter execution completed successfully"
-
-          observed_generation:
-            expression: "generation"
-          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
-
-          # Data extracted from discovered resources (nested discoveries are top-level keys)
-          data:
-            configmap:
-              name:
-                expression: |
-                  resources.?configmap0.?metadata.?name.orValue("")
-              clusterId:
-                expression: |
-                  resources.?configmap0.?data.?cluster_id.orValue("")
-            namespace:
-              name:
-                expression: |
-                  resources.?namespace0.?metadata.?name.orValue("")
-              # Namespace phase from statusFeedback merged onto the nested discovery object
-              phase:
-                expression: |
-                  has(resources.namespace0)
-                    && has(resources.namespace0.statusFeedback)
-                    && has(resources.namespace0.statusFeedback.values)
-                    && resources.namespace0.statusFeedback.values
-                        .filter(v, v.name == "phase").size() > 0
-                  ? resources.namespace0.statusFeedback.values
-                      .filter(v, v.name == "phase")[0].fieldValue.string
-                  : ""
-            manifestwork:
-              name:
-                expression: |
-                  resources.?resource0.?metadata.?name.orValue("")
-              appliedAt:
-                expression: |
-                  resources.?resource0.?metadata.?creationTimestamp.orValue("")
-            debug:
+                  hyperfleet.io/generation: '{{ .generation }}'
+                labels:
+                  hyperfleet.io/cluster-id: '{{ .clusterId }}'
+                name: '{{ .clusterId }}-config-symbol2222'
+                namespace: '{{ .clusterId }}'
+    name: resource0
+    # Discover sub-resources within the manifestWork
+    # This approach can be used to use the discovery name to parameter level
+    # This can support jsonPath to dig into the resource status. like discoveryNamespace.status.conditions[?(@.type=="Ready")].status
+    nested_discoveries:
+      - discovery:
+          by_selectors:
+            label_selector:
+              hyperfleet.io/label-for-discovery: namespace-symbol111
+        name: namespace0
+      - discovery:
+          by_name: '{{ .clusterId }}-config-symbol2222'
+        name: configmap0
+    transport:
+      client: maestro
+      maestro:
+        target_cluster: cluster1
+post:
+  payloads:
+    - build:
+        adapter: dryrun-maestro
+        conditions:
+          # Applied: Was the ManifestWork applied by Maestro?
+          - message:
               expression: |
-                  toJson(resources.resource0)
-
-    postActions:
-      - name: "update-status"
-        apiCall:
-          method: "POST"
-          url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
-          body: "{{ .statusPayload }}"
+                has(resources.resource0)
+                  && has(resources.resource0.status)
+                  && has(resources.resource0.status.conditions)
+                  && resources.resource0.status.conditions.filter(c, c.type == "Applied").size() > 0
+                ? resources.resource0.status.conditions.filter(c, c.type == "Applied")[0].message
+                : "ManifestWork not yet discovered or status unavailable"
+            reason:
+              expression: |
+                has(resources.resource0)
+                  && has(resources.resource0.status)
+                  && has(resources.resource0.status.conditions)
+                  && resources.resource0.status.conditions.filter(c, c.type == "Applied").size() > 0
+                ? resources.resource0.status.conditions.filter(c, c.type == "Applied")[0].reason
+                : "ManifestWorkNotDiscovered"
+            status:
+              expression: |
+                has(resources.resource0)
+                  && has(resources.resource0.status)
+                  && has(resources.resource0.status.conditions)
+                  && resources.resource0.status.conditions.filter(c, c.type == "Applied").size() > 0
+                ? resources.resource0.status.conditions.filter(c, c.type == "Applied")[0].status
+                : "False"
+            type: Applied
+          # Available: Are all sub-resources available on the target cluster?
+          - message:
+              expression: |
+                has(resources.resource0)
+                  && has(resources.resource0.status)
+                  && has(resources.resource0.status.conditions)
+                  && resources.resource0.status.conditions.filter(c, c.type == "Available").size() > 0
+                ? resources.resource0.status.conditions.filter(c, c.type == "Available")[0].message
+                : "ManifestWork not yet discovered or resources not available"
+            reason:
+              expression: |
+                has(resources.resource0)
+                  && has(resources.resource0.status)
+                  && has(resources.resource0.status.conditions)
+                  && resources.resource0.status.conditions.filter(c, c.type == "Available").size() > 0
+                ? resources.resource0.status.conditions.filter(c, c.type == "Available")[0].reason
+                : "ResourcesNotYetAvailable"
+            status:
+              expression: |
+                has(resources.resource0)
+                  && has(resources.resource0.status)
+                  && has(resources.resource0.status.conditions)
+                  && resources.resource0.status.conditions.filter(c, c.type == "Available").size() > 0
+                ? resources.resource0.status.conditions.filter(c, c.type == "Available")[0].status
+                : "False"
+            type: Available
+          # Health: Adapter execution status — surfaces errors from any phase
+          - message:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "Adapter failed at phase ["
+                    + adapter.?executionError.?phase.orValue("unknown")
+                    + "] step ["
+                    + adapter.?executionError.?step.orValue("unknown")
+                    + "]: "
+                    + adapter.?executionError.?message.orValue(adapter.?errorMessage.orValue("no details"))
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
+                  : "Adapter execution completed successfully"
+            reason:
+              expression: |
+                adapter.?executionStatus.orValue("") != "success"
+                ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
+                : adapter.?resourcesSkipped.orValue(false)
+                  ? "ResourcesSkipped"
+                  : "Healthy"
+            status:
+              expression: |
+                adapter.?executionStatus.orValue("") == "success"
+                  && !adapter.?resourcesSkipped.orValue(false)
+                ? "True"
+                : "False"
+            type: Health
+        # Data extracted from discovered resources (nested discoveries are top-level keys)
+        data:
+          configmap:
+            clusterId:
+              expression: |
+                resources.?configmap0.?data.?cluster_id.orValue("")
+            name:
+              expression: |
+                resources.?configmap0.?metadata.?name.orValue("")
+          debug:
+            expression: |
+              toJson(resources.resource0)
+          manifestwork:
+            appliedAt:
+              expression: |
+                resources.?resource0.?metadata.?creationTimestamp.orValue("")
+            name:
+              expression: |
+                resources.?resource0.?metadata.?name.orValue("")
+          namespace:
+            name:
+              expression: |
+                resources.?namespace0.?metadata.?name.orValue("")
+            # Namespace phase from statusFeedback merged onto the nested discovery object
+            phase:
+              expression: |
+                has(resources.namespace0)
+                  && has(resources.namespace0.statusFeedback)
+                  && has(resources.namespace0.statusFeedback.values)
+                  && resources.namespace0.statusFeedback.values
+                      .filter(v, v.name == "phase").size() > 0
+                ? resources.namespace0.statusFeedback.values
+                    .filter(v, v.name == "phase")[0].fieldValue.string
+                : ""
+        observed_generation:
+          expression: generation
+        observed_time: '{{ now | date "2006-01-02T15:04:05Z07:00" }}'
+      name: statusPayload
+  post_actions:
+    - api_call:
+        body: '{{ .statusPayload }}'
+        method: POST
+        url: /api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses
+      name: update-status

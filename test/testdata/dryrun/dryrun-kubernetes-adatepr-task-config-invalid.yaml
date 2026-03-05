@@ -4,46 +4,40 @@
 # THIS FILE IS INVALID ON PURPOSE
 # THIS FILE IS INVALID ON PURPOSE
 # THIS FILE IS INVALID ON PURPOSE
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: invalid-task
+params:
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
 
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
+preconditions:
+  - name: "bad-cel"
+    expression: |
+      this is not valid CEL !!!
 
-  preconditions:
-    - name: "bad-cel"
-      expression: |
-        this is not valid CEL !!!
+resources:
+  - name: "missingFields"
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      # missing metadata.name — validation should catch this
+      metadata:
+        labels:
+          app: test
+        annotations:
+          hyperfleet.io/generation: "1"
+    discovery:
+      namespace: "default"
+      by_name: "test"
 
-  resources:
-    - name: "missingFields"
-      manifest:
-        apiVersion: v1
-        kind: ConfigMap
-        # missing metadata.name — validation should catch this
-        metadata:
-          labels:
-            app: test
-          annotations:
-            hyperfleet.io/generation: "1"
-      discovery:
-        namespace: "default"
-        byName: "test"
-
-    - name: "undefinedVar"
-      manifest:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "{{ .nonExistentVariable }}"
-          annotations:
-            hyperfleet.io/generation: "1"
-      discovery:
-        namespace: "default"
-        byName: "test"
+  - name: "undefinedVar"
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ .nonExistentVariable }}"
+        annotations:
+          hyperfleet.io/generation: "1"
+    discovery:
+      namespace: "default"
+      by_name: "test"

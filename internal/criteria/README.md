@@ -103,7 +103,7 @@ The `ExtractField` function supports both simple dot notation and Kubernetes JSO
 
 ```go
 // Simple dot notation (auto-converted to JSONPath internally)
-result, err := criteria.ExtractField(data, "metadata.name")
+result, err := criteria.ExtractField(data, ".name")
 if err != nil {
     // Parse error (invalid JSONPath syntax)
 }
@@ -120,6 +120,7 @@ result, err := criteria.ExtractField(data, "{.items[?(@.adapter=='landing-zone-a
 ```
 
 **FieldResult structure:**
+
 - `Value`: The extracted value (nil if field not found or empty)
 - `Error`: Runtime extraction error (e.g., field not found) - not a parse error
 
@@ -127,7 +128,7 @@ result, err := criteria.ExtractField(data, "{.items[?(@.adapter=='landing-zone-a
 
 | Syntax | Description | Example |
 |--------|-------------|---------|
-| `.field` | Child field | `{.metadata.name}` |
+| `.field` | Child field | `{.name}` |
 | `[n]` | Array index | `{.items[0]}` |
 | `[*]` | All elements | `{.items[*].name}` |
 | `[?(@.x=='y')]` | Filter by value | `{.items[?(@.status=='Ready')]}` |
@@ -148,11 +149,13 @@ result, err = evaluator.ExtractValue("", "items.filter(i, i.status == 'active').
 ```
 
 The `ExtractValueResult` contains:
+
 - `Value`: The extracted value (nil if field not found or empty)
 - `Source`: The field path or expression used
 - `Error`: Runtime extraction error (if any)
 
 **Error handling:**
+
 - Returns `error` (2nd return) only for **parse errors** (invalid JSONPath/CEL syntax)
 - Field not found → `result.Value = nil` (allows caller to use default value)
 
@@ -326,4 +329,3 @@ preconditions:
       - field: "vpcId"
         operator: "exists"
 ```
-

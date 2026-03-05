@@ -1,37 +1,31 @@
 # Adapter deployment configuration for dry-run testing
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: dryrun-adapter
-  labels:
-    hyperfleet.io/component: adapter
+  version: "0.1.0"
 
-spec:
-  adapter:
-    version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: http://localhost:8000
+    timeout: 10s
+    retry_attempts: 3
+    retry_backoff: exponential
 
-  clients:
-    hyperfleetApi:
-      timeout: 10s
-      retryAttempts: 3
-      retryBackoff: exponential
+  broker:
+    subscription_id: "dryrun-sub"
+    topic: "cluster-events"
 
-    broker:
-      subscriptionId: "dryrun-sub"
-      topic: "cluster-events"
+  maestro:
+    grpc_server_address: "localhost:8090"
 
-    maestro:
-      grpcServerAddress: "localhost:8090"
-      
-      # HTTPS server address for REST API operations (optional)
-      # Environment variable: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS
-      httpServerAddress: "http://localhost:8100"
-      
-      # Source identifier for CloudEvents routing (must be unique across adapters)
-      # Environment variable: HYPERFLEET_MAESTRO_SOURCE_ID
-      sourceId: "hyperfleet-adapter"
-      
-      # Client identifier (defaults to sourceId if not specified)
-      # Environment variable: HYPERFLEET_MAESTRO_CLIENT_ID
-      clientId: "hyperfleet-adapter-client"
-      insecure: true
+    # HTTPS server address for REST API operations (optional)
+    # Environment variable: HYPERFLEET_MAESTRO_HTTP_SERVER_ADDRESS
+    http_server_address: "http://localhost:8100"
+
+    # Source identifier for CloudEvents routing (must be unique across adapters)
+    # Environment variable: HYPERFLEET_MAESTRO_SOURCE_ID
+    source_id: "hyperfleet-adapter"
+
+    # Client identifier (defaults to source_id if not specified)
+    # Environment variable: HYPERFLEET_MAESTRO_CLIENT_ID
+    client_id: "hyperfleet-adapter-client"
+    insecure: true

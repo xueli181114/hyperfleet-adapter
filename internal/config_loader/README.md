@@ -37,10 +37,10 @@ config, err := config_loader.Load("config.yaml", config_loader.WithAdapterVersio
 
 ```go
 // Metadata
-config.Metadata.Name
+config.Adapter.Name
 
 // API config
-timeout := config.Spec.Clients.HyperfleetAPI.Timeout
+timeout := config.Clients.HyperfleetAPI.Timeout
 
 // Query helpers
 config.GetRequiredParams()
@@ -52,23 +52,21 @@ config.GetPostActionByName("reportStatus")
 ## Configuration Structure
 
 ```yaml
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+# adapter-config.yaml (deployment config)
+adapter:
   name: example-adapter
-  namespace: hyperfleet-system
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      timeout: 2s
-      retryAttempts: 3
-      retryBackoff: exponential
-  params: [...]
-  preconditions: [...]
-  resources: [...]
-  post: {...}
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    timeout: 2s
+    retry_attempts: 3
+    retry_backoff: exponential
+
+# adapter-task-config.yaml (task config — merged at runtime)
+params: [...]
+preconditions: [...]
+resources: [...]
+post: {...}
 ```
 
 See `configs/adapter-task-config-template.yaml` for the complete configuration reference.
@@ -116,11 +114,12 @@ Operator string `yaml:"operator" validate:"required,validoperator"`
 ### Error Messages
 
 Validation errors are descriptive:
-```
-spec.params[0].name is required
-spec.preconditions[1].apiCall.method "INVALID" is invalid (allowed: GET, POST, PUT, PATCH, DELETE)
-spec.resources[0].name "my-resource": must start with lowercase letter and contain only letters, numbers, underscores (no hyphens)
-spec.preconditions[0].capture[0]: must have either 'field' or 'expression' set
+
+```text
+params[0].name is required
+preconditions[1].api_call.method "INVALID" is invalid (allowed: GET, POST, PUT, PATCH, DELETE)
+resources[0].name "my-resource": must start with lowercase letter and contain only letters, numbers, underscores (no hyphens)
+preconditions[0].capture[0]: must have either 'field' or 'expression' set
 ```
 
 ## Types
@@ -146,7 +145,7 @@ The package uses struct embedding to reduce duplication:
 // ActionBase - common fields for actions (preconditions, post-actions)
 type ActionBase struct {
     Name    string   `yaml:"name" validate:"required"`
-    APICall *APICall `yaml:"apiCall,omitempty"`
+    APICall *APICall `yaml:"api_call,omitempty"`
 }
 
 // FieldExpressionDef - field OR expression (mutually exclusive)

@@ -119,17 +119,12 @@ func startPostgresContainer(ctx context.Context) (testcontainers.Container, erro
 		Image:        PostgresImage,
 		ExposedPorts: []string{PostgresPort},
 		Env: map[string]string{
-			"POSTGRES_DB":       dbName,
-			"POSTGRES_USER":     dbUser,
-			"POSTGRES_PASSWORD": dbPassword,
+			"POSTGRESQL_DATABASE": dbName,
+			"POSTGRESQL_USER":     dbUser,
+			"POSTGRESQL_PASSWORD": dbPassword,
 		},
-		WaitingFor: wait.ForAll(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second),
-			wait.ForListeningPort(nat.Port(PostgresPort)).
-				WithStartupTimeout(60*time.Second),
-		),
+		WaitingFor: wait.ForListeningPort(nat.Port(PostgresPort)).
+			WithStartupTimeout(60 * time.Second),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

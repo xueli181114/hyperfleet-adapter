@@ -46,8 +46,9 @@ type Server struct {
 	// This follows the HyperFleet Graceful Shutdown Standard.
 	shuttingDown atomic.Bool
 
-	mu     sync.RWMutex
-	checks map[string]CheckStatus
+	mu         sync.RWMutex
+	checks     map[string]CheckStatus
+	configYAML []byte // set only when debug_config is true
 }
 
 // NewServer creates a new health check server.
@@ -65,6 +66,7 @@ func NewServer(log logger.Logger, port string, component string) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.healthzHandler)
 	mux.HandleFunc("/readyz", s.readyzHandler)
+	mux.HandleFunc("/config", s.configHandler)
 
 	s.server = &http.Server{
 		Addr:              ":" + port,
@@ -114,6 +116,14 @@ func (s *Server) SetBrokerReady(ready bool) {
 // SetConfigLoaded marks the config check as ok.
 func (s *Server) SetConfigLoaded() {
 	s.SetCheck("config", CheckOK)
+}
+
+// SetConfig stores pre-marshaled YAML config to serve at /config.
+// Only call this when debug_config is enabled — the endpoint returns 404 otherwise.
+func (s *Server) SetConfig(data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.configYAML = data
 }
 
 // SetShuttingDown marks the server as shutting down.
@@ -201,4 +211,21 @@ func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
 		Message: "not ready",
 		Checks:  checks,
 	})
+}
+
+// configHandler serves the current adapter configuration as YAML.
+// Returns 404 if debug_config is not enabled (SetConfig was never called).
+func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	data := s.configYAML
+	s.mu.RUnlock()
+
+	if data == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/yaml")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data) //nolint:errcheck // best-effort response
 }

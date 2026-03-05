@@ -91,15 +91,15 @@ spec:
             - name: LOG_LEVEL
               value: {{ .Values.adapterConfig.log.level }}
             - name: HYPERFLEET_API_BASE_URL
-              value: {{ .Values.adapterConfig.hyperfleetApi.baseUrl | quote }}
+              value: {{ .Values.adapterConfig.hyperfleet_api.base_url | quote }}
             - name: HYPERFLEET_API_VERSION
-              value: {{ .Values.adapterConfig.hyperfleetApi.version | quote }}
+              value: {{ .Values.adapterConfig.hyperfleet_api.version | quote }}
             - name: BROKER_CONFIG_FILE
               value: /etc/broker/broker.yaml
             {{- $brokerType := include "hyperfleet-adapter.brokerType" . }}
             {{- if eq $brokerType "googlepubsub" }}
             - name: HYPERFLEET_BROKER_SUBSCRIPTION_ID
-              value: {{ .Values.broker.googlepubsub.subscriptionId | quote }}
+              value: {{ .Values.broker.googlepubsub.subscription_id | quote }}
             - name: HYPERFLEET_BROKER_TOPIC
               value: {{ .Values.broker.googlepubsub.topic | quote }}
             {{- end }}

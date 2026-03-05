@@ -76,9 +76,9 @@ func TestConfigLoadAndCriteriaEvaluation(t *testing.T) {
 
 	// Simulate cluster details response
 	ctx.Set("clusterDetails", map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name": "test-cluster",
-		},
+		"id":   "test-cluster-id",
+		"name": "test-cluster",
+		"kind": "Cluster",
 		"spec": map[string]interface{}{
 			"provider":   "aws",
 			"region":     "us-east-1",
@@ -210,7 +210,7 @@ func TestConfigResourceDiscoveryFields(t *testing.T) {
 	config := loadTestConfig(t)
 
 	t.Run("verify resource discovery configs", func(t *testing.T) {
-		for _, resource := range config.Spec.Resources {
+		for _, resource := range config.Resources {
 			t.Logf("Resource: %s", resource.Name)
 
 			if resource.Discovery != nil {
@@ -233,7 +233,7 @@ func TestConfigResourceDiscoveryFields(t *testing.T) {
 func TestConfigPostProcessingEvaluation(t *testing.T) {
 	config := loadTestConfig(t)
 
-	require.NotNil(t, config.Spec.Post, "config should have post processing")
+	require.NotNil(t, config.Post, "config should have post processing")
 
 	t.Run("simulate post-processing with k8s resource data", func(t *testing.T) {
 		ctx := criteria.NewEvaluationContext()
@@ -328,7 +328,7 @@ func TestConfigPostProcessingEvaluation(t *testing.T) {
 func TestConfigNullSafetyWithMissingResources(t *testing.T) {
 	config := loadTestConfig(t)
 	// Verify config has resources defined (the actual resources are tested for null safety below)
-	require.NotEmpty(t, config.Spec.Resources, "config should have resources defined")
+	require.NotEmpty(t, config.Resources, "config should have resources defined")
 
 	t.Run("handle missing resource gracefully", func(t *testing.T) {
 		ctx := criteria.NewEvaluationContext()
@@ -397,7 +397,7 @@ func TestConfigParameterExtraction(t *testing.T) {
 	})
 
 	t.Run("verify parameter sources", func(t *testing.T) {
-		for _, param := range config.Spec.Params {
+		for _, param := range config.Params {
 			if param.Source != "" {
 				// Check source format
 				assert.True(t,

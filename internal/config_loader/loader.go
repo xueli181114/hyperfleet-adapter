@@ -12,28 +12,11 @@ import (
 // Constants
 // -----------------------------------------------------------------------------
 
-// API version constants
-const (
-	APIVersionV1Alpha1 = "hyperfleet.redhat.com/v1alpha1"
-)
-
-// Kind constants for configuration types
-const (
-	ExpectedKindAdapter = "AdapterConfig"     // Deployment config kind
-	ExpectedKindTask    = "AdapterTaskConfig" // Task config kind
-	ExpectedKindConfig  = "Config"            // Unified merged config kind
-)
-
 // Environment variable for config file paths
 const (
 	EnvAdapterConfig  = "HYPERFLEET_ADAPTER_CONFIG" // Path to deployment config
 	EnvTaskConfigPath = "HYPERFLEET_TASK_CONFIG"    // Path to task config
 )
-
-// SupportedAPIVersions contains all supported apiVersion values
-var SupportedAPIVersions = []string{
-	APIVersionV1Alpha1,
-}
 
 // ValidHTTPMethods defines allowed HTTP methods for API calls
 var ValidHTTPMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
@@ -102,23 +85,16 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 	}
 
 	// 1. Load AdapterConfig with Viper (env/CLI overrides)
-	adapterCfg, err := loadAdapterConfigWithViperGeneric(o.adapterConfigPath, o.flags)
+	// resolvedAdapterConfigPath is the actual path used (may come from standardConfigPaths fallback)
+	resolvedAdapterConfigPath, adapterCfg, err := loadAdapterConfigWithViperGeneric(o.adapterConfigPath, o.flags)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load adapter config: %w", err)
 	}
 
-	// Get base directory from adapter config path for file references
-	adapterConfigPath := o.adapterConfigPath
-	if adapterConfigPath == "" {
-		adapterConfigPath = os.Getenv(EnvAdapterConfig)
-	}
-	adapterBaseDir := ""
-	if adapterConfigPath != "" {
-		var errBaseDir error
-		adapterBaseDir, errBaseDir = getBaseDir(adapterConfigPath)
-		if errBaseDir != nil {
-			return nil, fmt.Errorf("failed to get base directory for adapter config: %w", errBaseDir)
-		}
+	// Get base directory from the resolved config path for file references
+	adapterBaseDir, errBaseDir := getBaseDir(resolvedAdapterConfigPath)
+	if errBaseDir != nil {
+		return nil, fmt.Errorf("failed to get base directory for adapter config: %w", errBaseDir)
 	}
 
 	// Validate AdapterConfig structure
@@ -193,9 +169,9 @@ func LoadConfig(opts ...LoadOption) (*Config, error) {
 
 // loadTaskConfigFileReferences loads content from file references into the task config
 func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) error {
-	// Load manifest.ref in spec.resources
-	for i := range config.Spec.Resources {
-		resource := &config.Spec.Resources[i]
+	// Load manifest.ref in resources
+	for i := range config.Resources {
+		resource := &config.Resources[i]
 		ref := resource.GetManifestRef()
 		if ref == "" {
 			continue
@@ -203,21 +179,21 @@ func loadTaskConfigFileReferences(config *AdapterTaskConfig, baseDir string) err
 
 		content, err := loadYAMLFile(baseDir, ref)
 		if err != nil {
-			return fmt.Errorf("%s.%s[%d].%s.%s: %w", FieldSpec, FieldResources, i, FieldManifest, FieldRef, err)
+			return fmt.Errorf("%s[%d].%s.%s: %w", FieldResources, i, FieldManifest, FieldRef, err)
 		}
 
 		// Replace manifest with loaded content
 		resource.Manifest = content
 	}
 
-	// Load buildRef in spec.post.payloads
-	if config.Spec.Post != nil {
-		for i := range config.Spec.Post.Payloads {
-			payload := &config.Spec.Post.Payloads[i]
+	// Load buildRef in post.payloads
+	if config.Post != nil {
+		for i := range config.Post.Payloads {
+			payload := &config.Post.Payloads[i]
 			if payload.BuildRef != "" {
 				content, err := loadYAMLFile(baseDir, payload.BuildRef)
 				if err != nil {
-					return fmt.Errorf("%s.%s.%s[%d].%s: %w", FieldSpec, FieldPost, FieldPayloads, i, FieldBuildRef, err)
+					return fmt.Errorf("%s.%s[%d].%s: %w", FieldPost, FieldPayloads, i, FieldBuildRef, err)
 				}
 				payload.BuildRefContent = content
 			}

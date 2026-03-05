@@ -18,13 +18,13 @@ customer updates cluster -> event -> adapter task -> k8s object performs work ->
 
 ### What you produce
 
-Every adapter requires three YAML files:
+Every adapter requires configuring 3 main elements:
 
-| File | Kind | Purpose |
-|------|------|---------|
-| `adapter-config.yaml` | `AdapterConfig` | Deployment settings: API client config, broker subscription, timeouts, retries |
-| `adapter-task-config.yaml` | `AdapterTaskConfig` | Business logic: what to extract, check, create, and report |
-| `broker.yaml` | `` | Broker configuration: Configures broker system (pubsub, rabbitmq) |
+| Concern |  Purpose |
+|-------|---------|
+| Adapter Config | Deployment settings: API client config, broker subscription, timeouts, retries |
+| Adapter Task Config | Business logic: what to extract, check, create, and report |
+| Broker config |  Broker configuration: Configures broker system (pubsub, rabbitmq) |
 
 The `AdapterConfig` is pretty straightforward, it defines the name of the adapter as well as client configs to interact with HyperFleet API, Kubernetes or Maestro.
 
@@ -126,21 +126,12 @@ Three languages appear in adapter configs, each for a different purpose:
 ### File skeleton
 
 ```yaml
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: my-adapter          # Unique adapter name (used in status reports and logs)
-  labels:
-    hyperfleet.io/adapter-type: my-adapter
-    hyperfleet.io/component: adapter
-
-spec:
-  params: []            # Phase 1: Extract variables from event and environment
-  preconditions: []     # Phase 2: Validate state via API calls
-  resources: []         # Phase 3: Create/update Kubernetes resources
-  post:                 # Phase 4: Report status
-    payloads: []        #   Build status JSON
-    postActions: []     #   Send status to API
+params: []            # Phase 1: Extract variables from event and environment
+preconditions: []     # Phase 2: Validate state via API calls
+resources: []         # Phase 3: Create/update Kubernetes resources
+post:                 # Phase 4: Report status
+  payloads: []        #   Build status JSON
+  post_actions: []    #   Send status to API
 ```
 
 ### Execution flow and error handling
@@ -181,24 +172,23 @@ The `adapter.*` context is populated automatically and available in your post-ac
 Parameters are variables extracted from the incoming CloudEvent and the runtime environment. They become available as Go Template variables (`{{ .paramName }}`) and CEL variables throughout the rest of the config.
 
 ```yaml
-spec:
-  params:
-    # From the CloudEvent data
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
+params:
+  # From the CloudEvent data
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
 
-    - name: "generation"
-      source: "event.generation"
-      type: "int"
-      required: true
+  - name: "generation"
+    source: "event.generation"
+    type: "int"
+    required: true
 
-    # From environment variables (set in Helm values or deployment)
-    - name: "region"
-      source: "env.REGION"
-      type: "string"
-      default: "us-east-1"
+  # From environment variables (set in Helm values or deployment)
+  - name: "region"
+    source: "env.REGION"
+    type: "string"
+    default: "us-east-1"
 ```
 
 ### Sources
@@ -242,15 +232,15 @@ The state of the cluster contains information about all adapters in the form of 
 ```yaml
 preconditions:
   - name: "clusterStatus"
-    apiCall:
+    api_call:
       method: "GET"
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
       timeout: 10s
-      retryAttempts: 3
-      retryBackoff: "exponential"    # also: linear, constant
+      retry_attempts: 3
+      retry_backoff: "exponential"    # also: linear, constant
 ```
 
-URLs are **relative** — the base URL comes from the `AdapterConfig` `clients.hyperfleetApi.baseUrl` setting. You only write the path.
+URLs are **relative** — the base URL comes from the `AdapterConfig` `clients.hyperfleet_api.base_url` setting. You only write the path.
 
 ### Capturing fields
 
@@ -321,14 +311,14 @@ Preconditions execute in order. Data flows forward — a captured field from pre
 ```yaml
 preconditions:
   - name: "getCluster"
-    apiCall:
+    api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}"
     capture:
       - name: "clusterName"
         field: "name"
 
   - name: "getStatuses"
-    apiCall:
+    api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
     capture:
       - name: "lzReady"
@@ -358,15 +348,15 @@ resources:
       apiVersion: v1
       kind: Namespace
       metadata:
-        name: "{{ .clusterId | lower }}"
+        name: "{{ .clusterId }}"
         labels:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
-          hyperfleet.io/managed-by: "{{ .metadata.name }}"
+          hyperfleet.io/managed-by: "{{ .adapter.name }}"
           hyperfleet.io/resource-type: "namespace"
         annotations:
           hyperfleet.io/generation: "{{ .generation }}"
     discovery:
-      byName: "{{ .clusterId | lower }}"
+      by_name: "{{ .clusterId }}"
 ```
 
 ### External manifest files
@@ -382,8 +372,8 @@ resources:
       ref: "/etc/adapter/job.yaml"
     discovery:
       namespace: "{{ .clusterId }}"
-      bySelectors:
-        labelSelector:
+      by_selectors:
+        label_selector:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
           hyperfleet.io/resource-type: "job"
 ```
@@ -401,7 +391,7 @@ The framework determines the operation automatically:
 | `create` | Resource doesn't exist | Apply the manifest |
 | `update` | Resource exists, generation changed | Patch the resource |
 | `skip` | Resource exists, generation unchanged | No-op (idempotent) |
-| `recreate` | `recreateOnChange: true` is set | Delete then create |
+| `recreate` | `recreate_on_change: true` is set | Delete then create |
 
 ### Discovery
 
@@ -412,13 +402,13 @@ Two discovery modes:
 ```yaml
 # By name (direct lookup)
 discovery:
-  byName: "{{ .clusterId | lower }}"
+  by_name: "{{ .clusterId }}"
 
 # By label selector
 discovery:
-  namespace: "{{ .clusterId }}"       # omit for all namespaces / cluster-scoped
-  bySelectors:
-    labelSelector:
+  namespace: "{{ .clusterId }}"       # omit or "*" for cluster-scoped
+  by_selectors:
+    label_selector:
       hyperfleet.io/cluster-id: "{{ .clusterId }}"
       hyperfleet.io/resource-type: "namespace"
 ```
@@ -470,7 +460,7 @@ resources:
     transport:
       client: "maestro"
       maestro:
-        targetCluster: "{{ .placementClusterName }}"
+        target_cluster: "{{ .placementClusterName }}"
     manifest:
       apiVersion: work.open-cluster-management.io/v1
       kind: ManifestWork
@@ -484,7 +474,7 @@ resources:
             - apiVersion: v1
               kind: Namespace
               metadata:
-                name: "{{ .clusterId | lower }}"
+                name: "{{ .clusterId }}"
                 labels:
                   hyperfleet.io/cluster-id: "{{ .clusterId }}"
                   hyperfleet.io/resource-type: "namespace"
@@ -492,14 +482,14 @@ resources:
               kind: ConfigMap
               metadata:
                 name: "{{ .clusterId }}-config"
-                namespace: "{{ .clusterId | lower }}"
+                namespace: "{{ .clusterId }}"
               data:
                 cluster_id: "{{ .clusterId }}"
         manifestConfigs:
           - resourceIdentifier:
               group: ""
               resource: "namespaces"
-              name: "{{ .clusterId | lower }}"
+              name: "{{ .clusterId }}"
             updateStrategy:
               type: "ServerSideApply"
             feedbackRules:
@@ -508,8 +498,8 @@ resources:
                   - name: "phase"
                     path: ".status.phase"
     discovery:
-      bySelectors:
-        labelSelector:
+      by_selectors:
+        label_selector:
           hyperfleet.io/cluster-id: "{{ .clusterId }}"
 ```
 
@@ -517,18 +507,18 @@ resources:
 
 #### Nested discovery (Maestro)
 
-A ManifestWork bundles multiple sub-resources. To inspect those sub-resources individually in your post-action CEL expressions without traversing the whole resources tree, you can use `nestedDiscoveries`:
+A ManifestWork bundles multiple sub-resources. To inspect those sub-resources individually in your post-action CEL expressions without traversing the whole resources tree, you can use `nested_discoveries`:
 
 ```yaml
-    nestedDiscoveries:
+    nested_discoveries:
       - name: "namespace0"
         discovery:
-          bySelectors:
-            labelSelector:
+          by_selectors:
+            label_selector:
               hyperfleet.io/resource-type: "namespace"
       - name: "configmap0"
         discovery:
-          byName: "{{ .clusterId }}-config"
+          by_name: "{{ .clusterId }}-config"
 ```
 
 Nested discoveries are **promoted to top-level keys** in the `resources` map. Access them as `resources.namespace0`, not `resources.clusterSetup.namespace0`. This keeps CEL expressions clean.
@@ -721,7 +711,7 @@ post:
   payloads:
     - name: "statusPayload"
       build:
-        adapter: "{{ .metadata.name }}"
+        adapter: "{{ .adapter.name }}"
         conditions:
           - type: "Applied"
             status:
@@ -757,9 +747,9 @@ post:
           expression: "generation"
         observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
 
-  postActions:
+  post_actions:
     - name: "reportStatus"
-      apiCall:
+      api_call:
         method: "POST"
         url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
         body: "{{ .statusPayload }}"
@@ -1038,10 +1028,10 @@ NodePool adapters typically wait for the parent cluster to be fully set up. Quer
 ```yaml
 preconditions:
   - name: "nodepoolStatus"
-    apiCall:
+    api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}"
     capture:
-      - name: "generationSpec"
+      - name: "generation"
         field: "generation"
       - name: "readyStatus"
         expression: |
@@ -1054,7 +1044,7 @@ preconditions:
         value: "False"
 
   - name: "clusterAdapterStatus"
-    apiCall:
+    api_call:
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/statuses"
     capture:
       - name: "clusterNamespaceStatus"
@@ -1072,9 +1062,9 @@ preconditions:
 Post-actions target the NodePool status endpoint instead of the cluster one:
 
 ```yaml
-postActions:
+post_actions:
   - name: "reportNodepoolStatus"
-    apiCall:
+    api_call:
       method: "POST"
       url: "/api/hyperfleet/v1/clusters/{{ .clusterId }}/nodepools/{{ .nodepoolId }}/statuses"
       body: "{{ .nodepoolStatusPayload }}"
@@ -1094,7 +1084,7 @@ The framework validates your config at load time in two passes:
 
 - Required fields present (`name`, `source`, `method`, etc.)
 - Valid operator values
-- Mutual exclusivity (`field` vs `expression`, `build` vs `buildRef`)
+- Mutual exclusivity (`field` vs `expression`, `build` vs `build_ref`)
 - Valid Kubernetes resource names
 
 **Semantic validation** — checked by default (can be skipped):
@@ -1137,24 +1127,20 @@ The adapter will run preconditions, skip straight to post-actions, and report st
 <details><summary>Example minimal adapter-config</summary>
 
 ```yaml
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: my-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "http://hyperfleet-api:8000"
-      timeout: 10s
-      retryAttempts: 3
-      retryBackoff: exponential
-    broker:
-      subscriptionId: "my-adapter-sub"
-      topic: "cluster-events"
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "http://hyperfleet-api:8000"
+    timeout: 10s
+    retry_attempts: 3
+    retry_backoff: exponential
+  broker:
+    subscription_id: "my-adapter-sub"
+    topic: "cluster-events"
+  kubernetes:
+    api_version: "v1"
 ```
 
 </details>
@@ -1169,7 +1155,7 @@ spec:
 
 More information about deployment can be found in [Architecture repository - HyperFleet Adapter Framework - Deployment Guide](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/adapter/framework/adapter-deployment.md)
 
-5. **Verify broker metrics** — the adapter automatically exposes broker metrics on the `/metrics` endpoint (port 9090). No additional configuration is needed. See [Observability](observability.md) for the full list of available metrics.
+1. **Verify broker metrics** — the adapter automatically exposes broker metrics on the `/metrics` endpoint (port 9090). No additional configuration is needed. See [Observability](observability.md) for the full list of available metrics.
 
 ---
 
@@ -1200,7 +1186,7 @@ condition ? "yes" : "no"
 "prefix-" + clusterId + "-suffix"
 
 # Numeric comparison (use expression for observed_generation)
-generationSpec
+generation
 
 # JSON serialization (debugging)
 toJson(resources.resource0)
@@ -1256,7 +1242,7 @@ has(resources.namespace0) && has(resources.configmap0)
 {{ .variableName }}                              Variable interpolation
 {{ .clusterId | lower }}                         Lowercase filter
 {{ now | date "2006-01-02T15:04:05Z07:00" }}     Current timestamp (RFC 3339)
-{{ .metadata.name }}                             Adapter name from config metadata
+{{ .adapter.name }}                              Adapter name from config
 ```
 
 Go Templates are used in: URLs, manifest field values, direct string values in payloads, and external template files.
@@ -1288,6 +1274,6 @@ Go Templates are used in: URLs, manifest field values, direct string values in p
 | Status update rejected by API | Stale `observed_generation` | Your adapter is reporting an older generation than what's already stored. Ensure `observed_generation` uses the generation from the API response, not the event. |
 | `template variable not found` | Variable referenced in `{{ .foo }}` but never defined | Add `foo` to params or captures. Check spelling. |
 | `CEL expression parse error` | Invalid CEL syntax | Verify parentheses, string quoting, and optional chaining syntax (`?.` for safe field access). |
-| Discovery returns empty | Labels don't match or wrong namespace | Verify `discovery.namespace` is correct. Use `byName` for a simpler lookup. Check resource labels match the selector exactly. |
+| Discovery returns empty | Labels don't match or wrong namespace | Verify `discovery.namespace` is correct. Use `by_name` for a simpler lookup. Check resource labels match the selector exactly. |
 | `observed_generation` is a string | Using Go Template instead of CEL expression | Use `expression: "generation"` instead of `"{{ .generation }}"`. |
 | Post-action API call returns 404 | Wrong status endpoint path | Cluster statuses: `/clusters/{id}/statuses`. NodePool statuses: `/clusters/{id}/nodepools/{id}/statuses`. |

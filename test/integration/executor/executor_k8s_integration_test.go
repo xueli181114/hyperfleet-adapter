@@ -41,9 +41,9 @@ func newK8sTestAPIServer(t *testing.T) *k8sTestAPIServer {
 	mock := &k8sTestAPIServer{
 		requests: make([]k8sTestRequest, 0),
 		clusterResponse: map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"name": "test-cluster",
-			},
+			"id":   "test-cluster-id",
+			"name": "test-cluster",
+			"kind": "Cluster",
 			"spec": map[string]interface{}{
 				"region":     "us-east-1",
 				"provider":   "aws",
@@ -145,163 +145,157 @@ func createK8sTestEvent(clusterId string) *event.Event {
 func createK8sTestConfig(apiBaseURL, testNamespace string) *config_loader.Config {
 	_ = apiBaseURL // Base URL is pulled from env params
 	return &config_loader.Config{
-		APIVersion: config_loader.APIVersionV1Alpha1,
-		Kind:       config_loader.ExpectedKindConfig,
-		Metadata: config_loader.Metadata{
-			Name: "k8s-test-adapter",
+		Adapter: config_loader.AdapterInfo{
+			Name:    "k8s-test-adapter",
+			Version: "1.0.0",
 		},
-		Spec: config_loader.ConfigSpec{
-			Adapter: config_loader.AdapterInfo{
-				Version: "1.0.0",
+		Clients: config_loader.ClientsConfig{
+			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Timeout:       10 * time.Second,
+				RetryAttempts: 1,
+				RetryBackoff:  hyperfleet_api.BackoffConstant,
 			},
-			Clients: config_loader.ClientsConfig{
-				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-					Timeout:       10 * time.Second,
-					RetryAttempts: 1,
-					RetryBackoff:  hyperfleet_api.BackoffConstant,
-				},
+		},
+		Params: []config_loader.Parameter{
+			{
+				Name:     "hyperfleetApiBaseUrl",
+				Source:   "env.HYPERFLEET_API_BASE_URL",
+				Required: true,
 			},
-			Params: []config_loader.Parameter{
-				{
-					Name:     "hyperfleetApiBaseUrl",
-					Source:   "env.HYPERFLEET_API_BASE_URL",
-					Required: true,
-				},
-				{
-					Name:     "hyperfleetApiVersion",
-					Source:   "env.HYPERFLEET_API_VERSION",
-					Default:  "v1",
-					Required: false,
-				},
-				{
-					Name:     "clusterId",
-					Source:   "event.id",
-					Required: true,
-				},
-				{
-					Name:     "testNamespace",
-					Default:  testNamespace,
-					Required: false,
-				},
+			{
+				Name:     "hyperfleetApiVersion",
+				Source:   "env.HYPERFLEET_API_VERSION",
+				Default:  "v1",
+				Required: false,
 			},
-			Preconditions: []config_loader.Precondition{
-				{
-					ActionBase: config_loader.ActionBase{
-						Name: "clusterStatus",
-						APICall: &config_loader.APICall{
-							Method:  "GET",
-							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
-							Timeout: "5s",
-						},
-					},
-					Capture: []config_loader.CaptureField{
-						{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "metadata.name"}},
-						{
-							Name: "readyConditionStatus",
-							FieldExpressionDef: config_loader.FieldExpressionDef{
-								Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
-							},
-						},
-						{Name: "region", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.region"}},
-						{Name: "cloudProvider", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.provider"}},
-					},
-					Conditions: []config_loader.Condition{
-						{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
-					},
-				},
+			{
+				Name:     "clusterId",
+				Source:   "event.id",
+				Required: true,
 			},
-			// K8s Resources to create
-			Resources: []config_loader.Resource{
-				{
-					Name: "clusterConfigMap",
-					Manifest: map[string]interface{}{
-						"apiVersion": "v1",
-						"kind":       "ConfigMap",
-						"metadata": map[string]interface{}{
-							"name":      "cluster-config-{{ .clusterId }}",
-							"namespace": testNamespace,
-							"labels": map[string]interface{}{
-								"hyperfleet.io/cluster-id": "{{ .clusterId }}",
-								"hyperfleet.io/managed-by": "{{ .metadata.name }}",
-								"test":                     "executor-integration",
-							},
-						},
-						"data": map[string]interface{}{
-							"cluster-id":   "{{ .clusterId }}",
-							"cluster-name": "{{ .clusterName }}",
-							"region":       "{{ .region }}",
-							"provider":     "{{ .cloudProvider }}",
-							"readyStatus":  "{{ .readyConditionStatus }}",
-						},
-					},
-					Discovery: &config_loader.DiscoveryConfig{
-						Namespace: testNamespace,
-						ByName:    "cluster-config-{{ .clusterId }}",
-					},
-				},
-				{
-					Name: "clusterSecret",
-					Manifest: map[string]interface{}{
-						"apiVersion": "v1",
-						"kind":       "Secret",
-						"metadata": map[string]interface{}{
-							"name":      "cluster-secret-{{ .clusterId }}",
-							"namespace": testNamespace,
-							"labels": map[string]interface{}{
-								"hyperfleet.io/cluster-id": "{{ .clusterId }}",
-								"hyperfleet.io/managed-by": "{{ .metadata.name }}",
-								"test":                     "executor-integration",
-							},
-						},
-						"type": "Opaque",
-						"stringData": map[string]interface{}{
-							"cluster-id": "{{ .clusterId }}",
-							"api-token":  "test-token-{{ .clusterId }}",
-						},
-					},
-					Discovery: &config_loader.DiscoveryConfig{
-						Namespace: testNamespace,
-						ByName:    "cluster-secret-{{ .clusterId }}",
-					},
-				},
+			{
+				Name:     "testNamespace",
+				Default:  testNamespace,
+				Required: false,
 			},
-			Post: &config_loader.PostConfig{
-				Payloads: []config_loader.Payload{
+		},
+		Preconditions: []config_loader.Precondition{
+			{
+				ActionBase: config_loader.ActionBase{
+					Name: "clusterStatus",
+					APICall: &config_loader.APICall{
+						Method:  "GET",
+						URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}",
+						Timeout: "5s",
+					},
+				},
+				Capture: []config_loader.CaptureField{
+					{Name: "clusterName", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "name"}},
 					{
-						Name: "clusterStatusPayload",
-						Build: map[string]interface{}{
-							"conditions": map[string]interface{}{
-								"applied": map[string]interface{}{
-									"status": map[string]interface{}{
-										"expression": "adapter.executionStatus == \"success\"",
-									},
-									"reason": map[string]interface{}{
-										"expression": "has(adapter.errorReason) ? adapter.errorReason : \"ResourcesCreated\"",
-									},
-									"message": map[string]interface{}{
-										"expression": "has(adapter.errorMessage) ? adapter.errorMessage : \"ConfigMap and Secret created successfully\"",
-									},
+						Name: "readyConditionStatus",
+						FieldExpressionDef: config_loader.FieldExpressionDef{
+							Expression: `status.conditions.filter(c, c.type == "Ready").size() > 0 ? status.conditions.filter(c, c.type == "Ready")[0].status : "False"`,
+						},
+					},
+					{Name: "region", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.region"}},
+					{Name: "cloudProvider", FieldExpressionDef: config_loader.FieldExpressionDef{Field: "spec.provider"}},
+				},
+				Conditions: []config_loader.Condition{
+					{Field: "readyConditionStatus", Operator: "equals", Value: "True"},
+				},
+			},
+		},
+		// K8s Resources to create
+		Resources: []config_loader.Resource{
+			{
+				Name: "clusterConfigMap",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name":      "cluster-config-{{ .clusterId }}",
+						"namespace": testNamespace,
+						"labels": map[string]interface{}{
+							"hyperfleet.io/cluster-id": "{{ .clusterId }}",
+							"hyperfleet.io/managed-by": "{{ .adapter.name }}",
+							"test":                     "executor-integration",
+						},
+					},
+					"data": map[string]interface{}{
+						"cluster-id":   "{{ .clusterId }}",
+						"cluster-name": "{{ .clusterName }}",
+						"region":       "{{ .region }}",
+						"provider":     "{{ .cloudProvider }}",
+						"readyStatus":  "{{ .readyConditionStatus }}",
+					},
+				},
+				Discovery: &config_loader.DiscoveryConfig{
+					Namespace: testNamespace,
+					ByName:    "cluster-config-{{ .clusterId }}",
+				},
+			},
+			{
+				Name: "clusterSecret",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "Secret",
+					"metadata": map[string]interface{}{
+						"name":      "cluster-secret-{{ .clusterId }}",
+						"namespace": testNamespace,
+						"labels": map[string]interface{}{
+							"hyperfleet.io/cluster-id": "{{ .clusterId }}",
+							"hyperfleet.io/managed-by": "{{ .adapter.name }}",
+							"test":                     "executor-integration",
+						},
+					},
+					"type": "Opaque",
+					"stringData": map[string]interface{}{
+						"cluster-id": "{{ .clusterId }}",
+						"api-token":  "test-token-{{ .clusterId }}",
+					},
+				},
+				Discovery: &config_loader.DiscoveryConfig{
+					Namespace: testNamespace,
+					ByName:    "cluster-secret-{{ .clusterId }}",
+				},
+			},
+		},
+		Post: &config_loader.PostConfig{
+			Payloads: []config_loader.Payload{
+				{
+					Name: "clusterStatusPayload",
+					Build: map[string]interface{}{
+						"conditions": map[string]interface{}{
+							"applied": map[string]interface{}{
+								"status": map[string]interface{}{
+									"expression": "adapter.executionStatus == \"success\"",
+								},
+								"reason": map[string]interface{}{
+									"expression": "has(adapter.errorReason) ? adapter.errorReason : \"ResourcesCreated\"",
+								},
+								"message": map[string]interface{}{
+									"expression": "has(adapter.errorMessage) ? adapter.errorMessage : \"ConfigMap and Secret created successfully\"",
 								},
 							},
-							"clusterId": map[string]interface{}{
-								"value": "{{ .clusterId }}",
-							},
-							"resourcesCreated": map[string]interface{}{
-								"value": "2",
-							},
+						},
+						"clusterId": map[string]interface{}{
+							"value": "{{ .clusterId }}",
+						},
+						"resourcesCreated": map[string]interface{}{
+							"value": "2",
 						},
 					},
 				},
-				PostActions: []config_loader.PostAction{
-					{
-						ActionBase: config_loader.ActionBase{
-							Name: "reportClusterStatus",
-							APICall: &config_loader.APICall{
-								Method:  "POST",
-								URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses",
-								Body:    "{{ .clusterStatusPayload }}",
-								Timeout: "5s",
-							},
+			},
+			PostActions: []config_loader.PostAction{
+				{
+					ActionBase: config_loader.ActionBase{
+						Name: "reportClusterStatus",
+						APICall: &config_loader.APICall{
+							Method:  "POST",
+							URL:     "{{ .hyperfleetApiBaseUrl }}/api/{{ .hyperfleetApiVersion }}/clusters/{{ .clusterId }}/statuses",
+							Body:    "{{ .clusterStatusPayload }}",
+							Timeout: "5s",
 						},
 					},
 				},
@@ -482,7 +476,7 @@ func TestExecutor_K8s_UpdateExistingResource(t *testing.T) {
 	// Create executor
 	config := createK8sTestConfig(mockAPI.URL(), testNamespace)
 	// Only include ConfigMap resource for this test
-	config.Spec.Resources = config.Spec.Resources[:1]
+	config.Resources = config.Resources[:1]
 
 	apiClient, err := hyperfleet_api.NewClient(testLog())
 	require.NoError(t, err)
@@ -560,7 +554,7 @@ func TestExecutor_K8s_DiscoveryByLabels(t *testing.T) {
 	// Create config with label-based discovery
 	config := createK8sTestConfig(mockAPI.URL(), testNamespace)
 	// Modify to use label selector instead of byName
-	config.Spec.Resources = []config_loader.Resource{
+	config.Resources = []config_loader.Resource{
 		{
 			Name: "clusterConfigMap",
 			Manifest: map[string]interface{}{
@@ -571,7 +565,7 @@ func TestExecutor_K8s_DiscoveryByLabels(t *testing.T) {
 					"namespace": testNamespace,
 					"labels": map[string]interface{}{
 						"hyperfleet.io/cluster-id": "{{ .clusterId }}",
-						"hyperfleet.io/managed-by": "{{ .metadata.name }}",
+						"hyperfleet.io/managed-by": "{{ .adapter.name }}",
 						"app":                      "cluster-config",
 					},
 				},
@@ -637,7 +631,7 @@ func TestExecutor_K8s_RecreateOnChange(t *testing.T) {
 
 	// Create config with recreateOnChange
 	config := createK8sTestConfig(mockAPI.URL(), testNamespace)
-	config.Spec.Resources = []config_loader.Resource{
+	config.Resources = []config_loader.Resource{
 		{
 			Name:             "clusterConfigMap",
 			RecreateOnChange: true, // Enable recreate
@@ -881,44 +875,37 @@ func TestExecutor_K8s_MultipleMatchingResources(t *testing.T) {
 	// Create config WITHOUT discovery - just create a new resource
 	// Discovery-based update logic is not yet implemented
 	config := &config_loader.Config{
-		APIVersion: config_loader.APIVersionV1Alpha1,
-		Kind:       config_loader.ExpectedKindConfig,
-		Metadata: config_loader.Metadata{
-			Name: "multi-match-test",
+		Adapter: config_loader.AdapterInfo{Name: "multi-match-test", Version: "1.0.0"},
+		Clients: config_loader.ClientsConfig{
+			HyperfleetAPI: config_loader.HyperfleetAPIConfig{
+				Timeout: 10 * time.Second, RetryAttempts: 1,
+			},
 		},
-		Spec: config_loader.ConfigSpec{
-			Adapter: config_loader.AdapterInfo{Version: "1.0.0"},
-			Clients: config_loader.ClientsConfig{
-				HyperfleetAPI: config_loader.HyperfleetAPIConfig{
-					Timeout: 10 * time.Second, RetryAttempts: 1,
-				},
-			},
-			Params: []config_loader.Parameter{
-				{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
-				{Name: "hyperfleetApiVersion", Default: "v1"},
-				{Name: "clusterId", Source: "event.id", Required: true},
-			},
-			// No preconditions - this test focuses on resource creation
-			Resources: []config_loader.Resource{
-				{
-					Name: "clusterConfig",
-					Manifest: map[string]interface{}{
-						"apiVersion": "v1",
-						"kind":       "ConfigMap",
-						"metadata": map[string]interface{}{
-							"name": "config-{{ .clusterId }}-new",
-							"labels": map[string]interface{}{
-								"hyperfleet.io/cluster-id": "{{ .clusterId }}",
-								"app":                      "multi-match-test",
-							},
-						},
-						"data": map[string]interface{}{
-							"cluster-id": "{{ .clusterId }}",
-							"created":    "true",
+		Params: []config_loader.Parameter{
+			{Name: "hyperfleetApiBaseUrl", Source: "env.HYPERFLEET_API_BASE_URL", Required: true},
+			{Name: "hyperfleetApiVersion", Default: "v1"},
+			{Name: "clusterId", Source: "event.id", Required: true},
+		},
+		// No preconditions - this test focuses on resource creation
+		Resources: []config_loader.Resource{
+			{
+				Name: "clusterConfig",
+				Manifest: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name": "config-{{ .clusterId }}-new",
+						"labels": map[string]interface{}{
+							"hyperfleet.io/cluster-id": "{{ .clusterId }}",
+							"app":                      "multi-match-test",
 						},
 					},
-					// No Discovery - just create the resource
+					"data": map[string]interface{}{
+						"cluster-id": "{{ .clusterId }}",
+						"created":    "true",
+					},
 				},
+				// No Discovery - just create the resource
 			},
 		},
 	}
@@ -979,8 +966,10 @@ func TestExecutor_K8s_PostActionsAfterPreconditionNotMet(t *testing.T) {
 
 	// Set cluster to Ready condition False (won't match condition)
 	mockAPI.clusterResponse = map[string]interface{}{
-		"metadata": map[string]interface{}{"name": "test-cluster"},
-		"spec":     map[string]interface{}{"region": "us-east-1"},
+		"id":   "test-cluster-id",
+		"name": "test-cluster",
+		"kind": "Cluster",
+		"spec": map[string]interface{}{"region": "us-east-1"},
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
 				{

@@ -31,53 +31,40 @@ func TestLoadConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	adapterYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: deployment-config
-  namespace: hyperfleet-system
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "https://test.example.com"
-      timeout: 2s
-      retryAttempts: 3
-      retryBackoff: exponential
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "https://test.example.com"
+    timeout: 2s
+    retry_attempts: 3
+    retry_backoff: exponential
+  kubernetes:
+    api_version: "v1"
 `
 
 	taskYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-  namespace: hyperfleet-system
-  labels:
-    hyperfleet.io/adapter-type: test
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-      type: "string"
-      required: true
-  preconditions:
-    - name: "clusterStatus"
-      apiCall:
-        method: "GET"
-        url: "https://api.example.com/clusters/{{ .clusterId }}"
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "test-ns"
-      discovery:
-        namespace: "*"
-        byName: "test-ns"
+params:
+  - name: "clusterId"
+    source: "event.id"
+    type: "string"
+    required: true
+preconditions:
+  - name: "clusterStatus"
+    api_call:
+      method: "GET"
+      url: "https://api.example.com/clusters/{{ .clusterId }}"
+resources:
+  - name: "testNamespace"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "test-ns"
+    discovery:
+      namespace: "*"
+      by_name: "test-ns"
 `
 
 	adapterPath, taskPath := createTestConfigFiles(t, tmpDir, adapterYAML, taskYAML)
@@ -92,34 +79,25 @@ spec:
 	require.NotNil(t, config)
 
 	// Verify merged config fields
-	assert.Equal(t, "hyperfleet.redhat.com/v1alpha1", config.APIVersion)
-	assert.Equal(t, "Config", config.Kind)
-	// Metadata comes from adapter config (takes precedence)
-	assert.Equal(t, "deployment-config", config.Metadata.Name)
 	// Adapter info comes from adapter config
-	assert.Equal(t, "0.1.0", config.Spec.Adapter.Version)
+	assert.Equal(t, "deployment-config", config.Adapter.Name)
+	assert.Equal(t, "0.1.0", config.Adapter.Version)
 	// Clients config comes from adapter config
-	assert.Equal(t, "https://test.example.com", config.Spec.Clients.HyperfleetAPI.BaseURL)
-	assert.Equal(t, 2*time.Second, config.Spec.Clients.HyperfleetAPI.Timeout)
+	assert.Equal(t, "https://test.example.com", config.Clients.HyperfleetAPI.BaseURL)
+	assert.Equal(t, 2*time.Second, config.Clients.HyperfleetAPI.Timeout)
 	// Task fields come from task config
-	require.Len(t, config.Spec.Params, 1)
-	assert.Equal(t, "clusterId", config.Spec.Params[0].Name)
-	require.Len(t, config.Spec.Preconditions, 1)
-	assert.Equal(t, "clusterStatus", config.Spec.Preconditions[0].Name)
-	require.Len(t, config.Spec.Resources, 1)
-	assert.Equal(t, "testNamespace", config.Spec.Resources[0].Name)
+	require.Len(t, config.Params, 1)
+	assert.Equal(t, "clusterId", config.Params[0].Name)
+	require.Len(t, config.Preconditions, 1)
+	assert.Equal(t, "clusterStatus", config.Preconditions[0].Name)
+	require.Len(t, config.Resources, 1)
+	assert.Equal(t, "testNamespace", config.Resources[0].Name)
 }
 
 func TestLoadConfigMissingAdapterConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	taskPath := filepath.Join(tmpDir, "task-config.yaml")
-	err := os.WriteFile(taskPath, []byte(`
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec: {}
-`), 0644)
+	err := os.WriteFile(taskPath, []byte(`{}`), 0644)
 	require.NoError(t, err)
 
 	config, err := LoadConfig(
@@ -135,18 +113,14 @@ func TestLoadConfigMissingTaskConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	adapterPath := filepath.Join(tmpDir, "adapter-config.yaml")
 	err := os.WriteFile(adapterPath, []byte(`
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  clients:
-    hyperfleetApi:
-      timeout: 5s
-    kubernetes:
-      apiVersion: v1
+  version: "1.0.0"
+clients:
+  hyperfleet_api:
+    timeout: 5s
+  kubernetes:
+    api_version: v1
 `), 0644)
 	require.NoError(t, err)
 
@@ -169,87 +143,39 @@ func TestAdapterConfigValidation(t *testing.T) {
 		{
 			name: "valid minimal adapter config",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-  clients:
-    hyperfleetApi:
-      timeout: 5s
-    kubernetes:
-      apiVersion: "v1"
+  version: "1.0.0"
+clients:
+  hyperfleet_api:
+    timeout: 5s
+  kubernetes:
+    api_version: "v1"
 `,
 			wantError: false,
 		},
 		{
-			name: "missing apiVersion",
+			name: "missing adapter.name",
 			yaml: `
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
+adapter:
+  version: "1.0.0"
+clients:
+  hyperfleet_api:
+    timeout: 5s
 `,
 			wantError: true,
-			errorMsg:  "apiVersion is required",
-		},
-		{
-			name: "missing kind",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-`,
-			wantError: true,
-			errorMsg:  "kind is required",
-		},
-		{
-			name: "missing metadata.name",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
-  namespace: test
-spec:
-  adapter:
-    version: "1.0.0"
-`,
-			wantError: true,
-			errorMsg:  "metadata.name is required",
+			errorMsg:  "name is required",
 		},
 		{
 			name: "missing adapter.version",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter: {}
+clients:
+  hyperfleet_api:
+    timeout: 5s
 `,
-			wantError: true,
-			errorMsg:  "spec.adapter.version is required",
-		},
-		{
-			name: "unsupported apiVersion",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v2
-kind: AdapterConfig
-metadata:
-  name: test-adapter
-spec:
-  adapter:
-    version: "1.0.0"
-`,
-			wantError: true,
-			errorMsg:  "unsupported apiVersion",
+			wantError: false,
 		},
 	}
 
@@ -282,78 +208,35 @@ func TestTaskConfigValidation(t *testing.T) {
 		errorMsg  string
 	}{
 		{
-			name: "valid minimal task config",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec: {}
-`,
+			name:      "valid minimal task config",
+			yaml:      `{}`,
 			wantError: false,
 		},
 		{
 			name: "valid task config with params",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-      required: true
+params:
+  - name: "clusterId"
+    source: "event.id"
+    required: true
 `,
 			wantError: false,
 		},
 		{
-			name: "missing apiVersion",
-			yaml: `
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec: {}
-`,
-			wantError: true,
-			errorMsg:  "apiVersion is required",
-		},
-		{
-			name: "missing kind",
-			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-metadata:
-  name: test-adapter
-spec: {}
-`,
-			wantError: true,
-			errorMsg:  "kind is required",
-		},
-		{
 			name: "parameter without name",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - source: "event.id"
+params:
+  - source: "event.id"
 `,
 			wantError: true,
-			errorMsg:  "spec.params[0].name is required",
+			errorMsg:  "params[0].name is required",
 		},
 		{
 			name: "parameter without source",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterId"
-      required: true
+params:
+  - name: "clusterId"
+    required: true
 `,
 			wantError: true,
 			errorMsg:  "source is required",
@@ -391,61 +274,41 @@ func TestValidatePreconditionsInTaskConfig(t *testing.T) {
 		{
 			name: "valid precondition with API call",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  preconditions:
-    - name: "checkCluster"
-      apiCall:
-        method: "GET"
-        url: "https://api.example.com/clusters"
+preconditions:
+  - name: "checkCluster"
+    api_call:
+      method: "GET"
+      url: "https://api.example.com/clusters"
 `,
 			wantError: false,
 		},
 		{
 			name: "precondition without name",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  preconditions:
-    - apiCall:
-        method: "GET"
-        url: "https://api.example.com/clusters"
+preconditions:
+  - api_call:
+      method: "GET"
+      url: "https://api.example.com/clusters"
 `,
 			wantError: true,
-			errorMsg:  "spec.preconditions[0].name is required",
+			errorMsg:  "preconditions[0].name is required",
 		},
 		{
 			name: "precondition without apiCall or expression",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  preconditions:
-    - name: "checkCluster"
+preconditions:
+  - name: "checkCluster"
 `,
 			wantError: true,
-			errorMsg:  "spec.preconditions[0]: must specify apiCall, conditions",
+			errorMsg:  "preconditions[0]: must specify api_call, conditions",
 		},
 		{
 			name: "API call without method",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  preconditions:
-    - name: "checkCluster"
-      apiCall:
-        url: "https://api.example.com/clusters"
+preconditions:
+  - name: "checkCluster"
+    api_call:
+      url: "https://api.example.com/clusters"
 `,
 			wantError: true,
 			errorMsg:  "method is required",
@@ -453,16 +316,11 @@ spec:
 		{
 			name: "API call with invalid method",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  preconditions:
-    - name: "checkCluster"
-      apiCall:
-        method: "INVALID"
-        url: "https://api.example.com/clusters"
+preconditions:
+  - name: "checkCluster"
+    api_call:
+      method: "INVALID"
+      url: "https://api.example.com/clusters"
 `,
 			wantError: true,
 			errorMsg:  "is invalid (allowed:",
@@ -500,52 +358,37 @@ func TestValidateResourcesInTaskConfig(t *testing.T) {
 		{
 			name: "valid resource with manifest",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "test-ns"
-      discovery:
-        namespace: "*"
-        byName: "test-ns"
+resources:
+  - name: "testNamespace"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "test-ns"
+    discovery:
+      namespace: "*"
+      by_name: "test-ns"
 `,
 			wantError: false,
 		},
 		{
 			name: "resource without name",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - manifest:
-        apiVersion: v1
-        kind: Namespace
+resources:
+  - manifest:
+      apiVersion: v1
+      kind: Namespace
 `,
 			wantError: true,
-			errorMsg:  "spec.resources[0].name is required",
+			errorMsg:  "resources[0].name is required",
 		},
 		{
 			name: "resource without manifest - kubernetes transport requires manifest in semantic validation",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testNamespace"
-      discovery:
-        byName: "test-ns"
+resources:
+  - name: "testNamespace"
+    discovery:
+      by_name: "test-ns"
 `,
 			wantError: false, // Manifest is no longer structurally required (validated semantically based on transport type)
 		},
@@ -574,75 +417,57 @@ spec:
 
 func TestMergeConfigs(t *testing.T) {
 	adapterCfg := &AdapterConfig{
-		APIVersion: "hyperfleet.redhat.com/v1alpha1",
-		Kind:       "AdapterConfig",
-		Metadata: Metadata{
-			Name: "adapter-deployment",
+		Adapter: AdapterInfo{
+			Name:    "adapter-deployment",
+			Version: "1.0.0",
 		},
-		Spec: AdapterConfigSpec{
-			Adapter: AdapterInfo{
-				Version: "1.0.0",
+		Clients: ClientsConfig{
+			HyperfleetAPI: HyperfleetAPIConfig{
+				BaseURL:       "https://api.example.com",
+				Timeout:       5 * time.Second,
+				RetryAttempts: 3,
 			},
-			Clients: ClientsConfig{
-				HyperfleetAPI: HyperfleetAPIConfig{
-					BaseURL:       "https://api.example.com",
-					Timeout:       5 * time.Second,
-					RetryAttempts: 3,
-				},
-				Kubernetes: KubernetesConfig{
-					APIVersion: "v1",
-				},
+			Kubernetes: KubernetesConfig{
+				APIVersion: "v1",
 			},
 		},
 	}
 
 	taskCfg := &AdapterTaskConfig{
-		APIVersion: "hyperfleet.redhat.com/v1alpha1",
-		Kind:       "AdapterTaskConfig",
-		Metadata: Metadata{
-			Name: "task-processor",
+		Params: []Parameter{
+			{Name: "clusterId", Source: "event.id", Required: true},
 		},
-		Spec: AdapterTaskSpec{
-			Params: []Parameter{
-				{Name: "clusterId", Source: "event.id", Required: true},
-			},
-			Preconditions: []Precondition{
-				{ActionBase: ActionBase{Name: "checkStatus"}},
-			},
-			Resources: []Resource{
-				{Name: "namespace"},
-			},
+		Preconditions: []Precondition{
+			{ActionBase: ActionBase{Name: "checkStatus"}},
+		},
+		Resources: []Resource{
+			{Name: "namespace"},
 		},
 	}
 
 	merged := Merge(adapterCfg, taskCfg)
 
 	// Verify merged config
-	assert.Equal(t, "hyperfleet.redhat.com/v1alpha1", merged.APIVersion)
-	assert.Equal(t, "Config", merged.Kind)
-	// Metadata comes from adapter config
-	assert.Equal(t, "adapter-deployment", merged.Metadata.Name)
 	// Adapter info from adapter config
-	assert.Equal(t, "1.0.0", merged.Spec.Adapter.Version)
+	assert.Equal(t, "adapter-deployment", merged.Adapter.Name)
+	assert.Equal(t, "1.0.0", merged.Adapter.Version)
 	// Clients from adapter config
-	assert.Equal(t, "https://api.example.com", merged.Spec.Clients.HyperfleetAPI.BaseURL)
-	assert.Equal(t, 5*time.Second, merged.Spec.Clients.HyperfleetAPI.Timeout)
+	assert.Equal(t, "https://api.example.com", merged.Clients.HyperfleetAPI.BaseURL)
+	assert.Equal(t, 5*time.Second, merged.Clients.HyperfleetAPI.Timeout)
 	// Task fields from task config
-	require.Len(t, merged.Spec.Params, 1)
-	assert.Equal(t, "clusterId", merged.Spec.Params[0].Name)
-	require.Len(t, merged.Spec.Preconditions, 1)
-	assert.Equal(t, "checkStatus", merged.Spec.Preconditions[0].Name)
-	require.Len(t, merged.Spec.Resources, 1)
-	assert.Equal(t, "namespace", merged.Spec.Resources[0].Name)
+	require.Len(t, merged.Params, 1)
+	assert.Equal(t, "clusterId", merged.Params[0].Name)
+	require.Len(t, merged.Preconditions, 1)
+	assert.Equal(t, "checkStatus", merged.Preconditions[0].Name)
+	require.Len(t, merged.Resources, 1)
+	assert.Equal(t, "namespace", merged.Resources[0].Name)
 }
 
 func TestGetRequiredParams(t *testing.T) {
 	config := &Config{
-		Spec: ConfigSpec{
-			Params: []Parameter{
-				{Name: "clusterId", Source: "event.id", Required: true},
-				{Name: "optional", Source: "event.optional", Required: false},
-			},
+		Params: []Parameter{
+			{Name: "clusterId", Source: "event.id", Required: true},
+			{Name: "optional", Source: "event.optional", Required: false},
 		},
 	}
 
@@ -653,11 +478,9 @@ func TestGetRequiredParams(t *testing.T) {
 
 func TestGetResourceByName(t *testing.T) {
 	config := &Config{
-		Spec: ConfigSpec{
-			Resources: []Resource{
-				{Name: "namespace1"},
-				{Name: "namespace2"},
-			},
+		Resources: []Resource{
+			{Name: "namespace1"},
+			{Name: "namespace2"},
 		},
 	}
 
@@ -671,11 +494,9 @@ func TestGetResourceByName(t *testing.T) {
 
 func TestGetPreconditionByName(t *testing.T) {
 	config := &Config{
-		Spec: ConfigSpec{
-			Preconditions: []Precondition{
-				{ActionBase: ActionBase{Name: "precond1"}},
-				{ActionBase: ActionBase{Name: "precond2"}},
-			},
+		Preconditions: []Precondition{
+			{ActionBase: ActionBase{Name: "precond1"}},
+			{ActionBase: ActionBase{Name: "precond2"}},
 		},
 	}
 
@@ -689,10 +510,9 @@ func TestGetPreconditionByName(t *testing.T) {
 
 func TestValidateAdapterVersion(t *testing.T) {
 	config := &AdapterConfig{
-		Spec: AdapterConfigSpec{
-			Adapter: AdapterInfo{
-				Version: "1.0.0",
-			},
+		Adapter: AdapterInfo{
+			Name:    "test-adapter",
+			Version: "1.0.0",
 		},
 	}
 
@@ -728,16 +548,24 @@ func TestValidateAdapterVersion(t *testing.T) {
 	err = ValidateAdapterVersion(config, "v0.0.0-dev")
 	assert.NoError(t, err)
 
+	// Empty config version (not provided in adapter config - skip validation)
+	noVersionConfig := &AdapterConfig{
+		Adapter: AdapterInfo{
+			Name: "test-adapter",
+		},
+	}
+	err = ValidateAdapterVersion(noVersionConfig, "1.0.0")
+	assert.NoError(t, err)
+
 	// Pre-release version with same major.minor - should pass
 	err = ValidateAdapterVersion(config, "1.0.1-rc.1")
 	assert.NoError(t, err)
 
 	// Invalid config version
 	invalidConfig := &AdapterConfig{
-		Spec: AdapterConfigSpec{
-			Adapter: AdapterInfo{
-				Version: "not-a-version",
-			},
+		Adapter: AdapterInfo{
+			Name:    "test-adapter",
+			Version: "not-a-version",
 		},
 	}
 	err = ValidateAdapterVersion(invalidConfig, "1.0.0")
@@ -748,23 +576,6 @@ func TestValidateAdapterVersion(t *testing.T) {
 	err = ValidateAdapterVersion(config, "not-a-version")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid expected adapter version")
-}
-
-func TestIsSupportedAPIVersion(t *testing.T) {
-	// Supported version
-	assert.True(t, IsSupportedAPIVersion("hyperfleet.redhat.com/v1alpha1"))
-
-	// Unsupported versions
-	assert.False(t, IsSupportedAPIVersion("hyperfleet.redhat.com/v1"))
-	assert.False(t, IsSupportedAPIVersion("hyperfleet.redhat.com/v2"))
-	assert.False(t, IsSupportedAPIVersion("other.io/v1alpha1"))
-	assert.False(t, IsSupportedAPIVersion(""))
-}
-
-func TestSupportedAPIVersions(t *testing.T) {
-	// Verify the constant is in the supported list
-	assert.Contains(t, SupportedAPIVersions, APIVersionV1Alpha1)
-	assert.Equal(t, "hyperfleet.redhat.com/v1alpha1", APIVersionV1Alpha1)
 }
 
 func TestValidateFileReferencesInTaskConfig(t *testing.T) {
@@ -787,14 +598,9 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "valid payload buildRef",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "test", BuildRef: "templates/test-template.yaml"},
-						},
+				Post: &PostConfig{
+					Payloads: []Payload{
+						{Name: "test", BuildRef: "templates/test-template.yaml"},
 					},
 				},
 			},
@@ -804,14 +610,9 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "invalid payload buildRef - file not found",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "test", BuildRef: "templates/nonexistent.yaml"},
-						},
+				Post: &PostConfig{
+					Payloads: []Payload{
+						{Name: "test", BuildRef: "templates/nonexistent.yaml"},
 					},
 				},
 			},
@@ -822,14 +623,9 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "invalid payload buildRef - is a directory",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "test", BuildRef: "templates"},
-						},
+				Post: &PostConfig{
+					Payloads: []Payload{
+						{Name: "test", BuildRef: "templates"},
 					},
 				},
 			},
@@ -840,16 +636,11 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "valid manifest.ref",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"ref": "templates/test-template.yaml",
-							},
+				Resources: []Resource{
+					{
+						Name: "test",
+						Manifest: map[string]interface{}{
+							"ref": "templates/test-template.yaml",
 						},
 					},
 				},
@@ -860,16 +651,11 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "invalid manifest.ref - file not found",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Resources: []Resource{
-						{
-							Name: "test",
-							Manifest: map[string]interface{}{
-								"ref": "templates/nonexistent.yaml",
-							},
+				Resources: []Resource{
+					{
+						Name: "test",
+						Manifest: map[string]interface{}{
+							"ref": "templates/nonexistent.yaml",
 						},
 					},
 				},
@@ -881,15 +667,10 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "valid multiple payloads with buildRef",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Post: &PostConfig{
-						Payloads: []Payload{
-							{Name: "payload1", BuildRef: "templates/test-template.yaml"},
-							{Name: "payload2", BuildRef: "templates/test-template.yaml"},
-						},
+				Post: &PostConfig{
+					Payloads: []Payload{
+						{Name: "payload1", BuildRef: "templates/test-template.yaml"},
+						{Name: "payload2", BuildRef: "templates/test-template.yaml"},
 					},
 				},
 			},
@@ -899,13 +680,8 @@ func TestValidateFileReferencesInTaskConfig(t *testing.T) {
 		{
 			name: "no file references - should pass",
 			config: &AdapterTaskConfig{
-				APIVersion: "hyperfleet.redhat.com/v1alpha1",
-				Kind:       "AdapterTaskConfig",
-				Metadata:   Metadata{Name: "test"},
-				Spec: AdapterTaskSpec{
-					Params: []Parameter{
-						{Name: "test", Source: "event.test"},
-					},
+				Params: []Parameter{
+					{Name: "test", Source: "event.test"},
 				},
 			},
 			baseDir: tmpDir,
@@ -941,47 +717,38 @@ status: "{{ .status }}"
 
 	// Create adapter config file
 	adapterYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "https://test.example.com"
-      timeout: 2s
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "https://test.example.com"
+    timeout: 2s
+  kubernetes:
+    api_version: "v1"
 `
 	adapterPath := filepath.Join(tmpDir, "adapter-config.yaml")
 	require.NoError(t, os.WriteFile(adapterPath, []byte(adapterYAML), 0644))
 
-	// Create task config file with buildRef
+	// Create task config file with build_ref
 	taskYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: test
-      discovery:
-        namespace: "*"
-        byName: "test"
-  post:
-    payloads:
-      - name: "statusPayload"
-        buildRef: "templates/status-payload.yaml"
+params:
+  - name: "clusterId"
+    source: "event.id"
+resources:
+  - name: "testNamespace"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: test
+    discovery:
+      namespace: "*"
+      by_name: "test"
+post:
+  payloads:
+    - name: "statusPayload"
+      build_ref: "templates/status-payload.yaml"
 `
 	taskPath := filepath.Join(tmpDir, "task-config.yaml")
 	require.NoError(t, os.WriteFile(taskPath, []byte(taskYAML), 0644))
@@ -994,37 +761,32 @@ spec:
 	)
 	require.NoError(t, err)
 	require.NotNil(t, config)
-	assert.Equal(t, "test-adapter", config.Metadata.Name)
+	assert.Equal(t, "test-adapter", config.Adapter.Name)
 
 	// Verify buildRef content was loaded
-	require.NotNil(t, config.Spec.Post)
-	require.Len(t, config.Spec.Post.Payloads, 1)
-	assert.NotNil(t, config.Spec.Post.Payloads[0].BuildRefContent)
+	require.NotNil(t, config.Post)
+	require.Len(t, config.Post.Payloads, 1)
+	assert.NotNil(t, config.Post.Payloads[0].BuildRefContent)
 
 	// Now test with non-existent buildRef
 	taskYAMLBad := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-  resources:
-    - name: "testNamespace"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: test
-      discovery:
-        namespace: "*"
-        byName: "test"
-  post:
-    payloads:
-      - name: "statusPayload"
-        buildRef: "templates/nonexistent.yaml"
+params:
+  - name: "clusterId"
+    source: "event.id"
+resources:
+  - name: "testNamespace"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: test
+    discovery:
+      namespace: "*"
+      by_name: "test"
+post:
+  payloads:
+    - name: "statusPayload"
+      build_ref: "templates/nonexistent.yaml"
 `
 	taskPathBad := filepath.Join(tmpDir, "task-config-bad.yaml")
 	require.NoError(t, os.WriteFile(taskPathBad, []byte(taskYAMLBad), 0644))
@@ -1067,46 +829,37 @@ spec:
 
 	// Create adapter config
 	adapterYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "https://test.example.com"
-      timeout: 2s
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "https://test.example.com"
+    timeout: 2s
+  kubernetes:
+    api_version: "v1"
 `
 	adapterPath := filepath.Join(tmpDir, "adapter-config.yaml")
 	require.NoError(t, os.WriteFile(adapterPath, []byte(adapterYAML), 0644))
 
-	// Create task config file with both buildRef and manifest.ref
+	// Create task config file with both build_ref and manifest.ref
 	taskYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterId"
-      source: "event.id"
-  resources:
-    - name: "deployment"
-      manifest:
-        ref: "templates/deployment.yaml"
-      discovery:
-        namespace: "*"
-        bySelectors:
-          labelSelector:
-            app: "test"
-  post:
-    payloads:
-      - name: "statusPayload"
-        buildRef: "templates/status-payload.yaml"
+params:
+  - name: "clusterId"
+    source: "event.id"
+resources:
+  - name: "deployment"
+    manifest:
+      ref: "templates/deployment.yaml"
+    discovery:
+      namespace: "*"
+      by_selectors:
+        label_selector:
+          app: "test"
+post:
+  payloads:
+    - name: "statusPayload"
+      build_ref: "templates/status-payload.yaml"
 `
 	taskPath := filepath.Join(tmpDir, "task-config.yaml")
 	require.NoError(t, os.WriteFile(taskPath, []byte(taskYAML), 0644))
@@ -1121,8 +874,8 @@ spec:
 	require.NotNil(t, config)
 
 	// Verify manifest.ref was loaded and replaced
-	require.Len(t, config.Spec.Resources, 1)
-	manifest, ok := config.Spec.Resources[0].Manifest.(map[string]interface{})
+	require.Len(t, config.Resources, 1)
+	manifest, ok := config.Resources[0].Manifest.(map[string]interface{})
 	require.True(t, ok, "Manifest should be a map after loading ref")
 	assert.Equal(t, "apps/v1", manifest["apiVersion"])
 	assert.Equal(t, "Deployment", manifest["kind"])
@@ -1131,25 +884,20 @@ spec:
 	assert.False(t, hasRef, "ref should be replaced with actual content")
 
 	// Verify buildRef content was loaded into BuildRefContent
-	require.NotNil(t, config.Spec.Post)
-	require.Len(t, config.Spec.Post.Payloads, 1)
-	assert.NotNil(t, config.Spec.Post.Payloads[0].BuildRefContent)
-	assert.Equal(t, "{{ .status }}", config.Spec.Post.Payloads[0].BuildRefContent["status"])
-	assert.Equal(t, "Operation completed", config.Spec.Post.Payloads[0].BuildRefContent["message"])
+	require.NotNil(t, config.Post)
+	require.Len(t, config.Post.Payloads, 1)
+	assert.NotNil(t, config.Post.Payloads[0].BuildRefContent)
+	assert.Equal(t, "{{ .status }}", config.Post.Payloads[0].BuildRefContent["status"])
+	assert.Equal(t, "Operation completed", config.Post.Payloads[0].BuildRefContent["message"])
 	// Original BuildRef path should still be preserved
-	assert.Equal(t, "templates/status-payload.yaml", config.Spec.Post.Payloads[0].BuildRef)
+	assert.Equal(t, "templates/status-payload.yaml", config.Post.Payloads[0].BuildRef)
 }
 
 func TestValidateResourceDiscoveryInTaskConfig(t *testing.T) {
 	// Helper to create a valid task config with given resources
 	configWithResources := func(resources []Resource) *AdapterTaskConfig {
 		return &AdapterTaskConfig{
-			APIVersion: "hyperfleet.redhat.com/v1alpha1",
-			Kind:       "AdapterTaskConfig",
-			Metadata:   Metadata{Name: "test-adapter"},
-			Spec: AdapterTaskSpec{
-				Resources: resources,
-			},
+			Resources: resources,
 		}
 	}
 
@@ -1260,7 +1008,7 @@ func TestValidateResourceDiscoveryInTaskConfig(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "spec.resources[0].discovery: must have either 'byName' or 'bySelectors' set",
+			errMsg:  "resources[0].discovery: must have either 'by_name' or 'by_selectors' set",
 		},
 		{
 			name: "invalid - bySelectors without labelSelector defined",
@@ -1277,7 +1025,7 @@ func TestValidateResourceDiscoveryInTaskConfig(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "spec.resources[0].discovery.bySelectors.labelSelector is required",
+			errMsg:  "resources[0].discovery.by_selectors.label_selector is required",
 		},
 	}
 
@@ -1376,22 +1124,17 @@ func TestTransportConfigYAMLParsing(t *testing.T) {
 		{
 			name: "resource with kubernetes transport",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testResource"
-      transport:
-        client: "kubernetes"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "test-ns"
-      discovery:
-        byName: "test-ns"
+resources:
+  - name: "testResource"
+    transport:
+      client: "kubernetes"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "test-ns"
+    discovery:
+      by_name: "test-ns"
 `,
 			wantError:      false,
 			wantClient:     "kubernetes",
@@ -1400,24 +1143,19 @@ spec:
 		{
 			name: "resource with maestro transport",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testResource"
-      transport:
-        client: "maestro"
-        maestro:
-          targetCluster: "cluster1"
-          manifestWork:
-            apiVersion: work.open-cluster-management.io/v1
-            kind: ManifestWork
-            metadata:
-              name: "test-mw"
-      discovery:
-        byName: "test-mw"
+resources:
+  - name: "testResource"
+    transport:
+      client: "maestro"
+      maestro:
+        target_cluster: "cluster1"
+        manifestWork:
+          apiVersion: work.open-cluster-management.io/v1
+          kind: ManifestWork
+          metadata:
+            name: "test-mw"
+    discovery:
+      by_name: "test-mw"
 `,
 			wantError:      false,
 			wantClient:     "maestro",
@@ -1427,21 +1165,16 @@ spec:
 		{
 			name: "resource with maestro transport and manifestWork ref",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testResource"
-      transport:
-        client: "maestro"
-        maestro:
-          targetCluster: "{{ .clusterName }}"
-          manifestWork:
-            ref: "/path/to/manifestwork.yaml"
-      discovery:
-        byName: "test-mw"
+resources:
+  - name: "testResource"
+    transport:
+      client: "maestro"
+      maestro:
+        target_cluster: "{{ .clusterName }}"
+        manifestWork:
+          ref: "/path/to/manifestwork.yaml"
+    discovery:
+      by_name: "test-mw"
 `,
 			wantError:      false,
 			wantClient:     "maestro",
@@ -1451,20 +1184,15 @@ spec:
 		{
 			name: "resource without transport (defaults to kubernetes)",
 			yaml: `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testResource"
-      manifest:
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: "test-ns"
-      discovery:
-        byName: "test-ns"
+resources:
+  - name: "testResource"
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "test-ns"
+    discovery:
+      by_name: "test-ns"
 `,
 			wantError:      false,
 			wantClient:     "kubernetes",
@@ -1482,9 +1210,9 @@ spec:
 				return
 			}
 			require.NoError(t, err)
-			require.Len(t, config.Spec.Resources, 1)
+			require.Len(t, config.Resources, 1)
 
-			resource := config.Spec.Resources[0]
+			resource := config.Resources[0]
 			assert.Equal(t, tt.wantClient, resource.GetTransportClient())
 
 			if tt.wantMaestroNil {
@@ -1581,42 +1309,33 @@ spec:
 `), 0644))
 
 	adapterYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "https://test.example.com"
-      timeout: 2s
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "https://test.example.com"
+    timeout: 2s
+  kubernetes:
+    api_version: "v1"
 `
 
 	taskYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterName"
-      source: "event.name"
-  resources:
-    - name: "testManifestWork"
-      transport:
-        client: "maestro"
-        maestro:
-          targetCluster: "{{ .clusterName }}"
-      manifest:
-        ref: "manifestwork.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            app: "test"
+params:
+  - name: "clusterName"
+    source: "event.name"
+resources:
+  - name: "testManifestWork"
+    transport:
+      client: "maestro"
+      maestro:
+        target_cluster: "{{ .clusterName }}"
+    manifest:
+      ref: "manifestwork.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          app: "test"
 `
 
 	adapterPath, taskPath := createTestConfigFiles(t, tmpDir, adapterYAML, taskYAML)
@@ -1630,8 +1349,8 @@ spec:
 	require.NotNil(t, config)
 
 	// Verify manifest ref was loaded and replaced with ManifestWork content
-	require.Len(t, config.Spec.Resources, 1)
-	resource := config.Spec.Resources[0]
+	require.Len(t, config.Resources, 1)
+	resource := config.Resources[0]
 
 	mw, ok := resource.Manifest.(map[string]interface{})
 	require.True(t, ok, "Manifest should be a map after loading ref")
@@ -1647,39 +1366,30 @@ func TestLoadConfigWithManifestWorkRefNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	adapterYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "https://test.example.com"
-      timeout: 2s
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "https://test.example.com"
+    timeout: 2s
+  kubernetes:
+    api_version: "v1"
 `
 
 	taskYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  resources:
-    - name: "testManifestWork"
-      transport:
-        client: "maestro"
-        maestro:
-          targetCluster: "cluster1"
-      manifest:
-        ref: "nonexistent-manifestwork.yaml"
-      discovery:
-        bySelectors:
-          labelSelector:
-            app: "test"
+resources:
+  - name: "testManifestWork"
+    transport:
+      client: "maestro"
+      maestro:
+        target_cluster: "cluster1"
+    manifest:
+      ref: "nonexistent-manifestwork.yaml"
+    discovery:
+      by_selectors:
+        label_selector:
+          app: "test"
 `
 
 	adapterPath, taskPath := createTestConfigFiles(t, tmpDir, adapterYAML, taskYAML)
@@ -1698,48 +1408,39 @@ func TestLoadConfigWithInlineManifestWork(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	adapterYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterConfig
-metadata:
+adapter:
   name: test-adapter
-spec:
-  adapter:
-    version: "0.1.0"
-  clients:
-    hyperfleetApi:
-      baseUrl: "https://test.example.com"
-      timeout: 2s
-    kubernetes:
-      apiVersion: "v1"
+  version: "0.1.0"
+clients:
+  hyperfleet_api:
+    base_url: "https://test.example.com"
+    timeout: 2s
+  kubernetes:
+    api_version: "v1"
 `
 
 	taskYAML := `
-apiVersion: hyperfleet.redhat.com/v1alpha1
-kind: AdapterTaskConfig
-metadata:
-  name: test-adapter
-spec:
-  params:
-    - name: "clusterName"
-      source: "event.name"
-  resources:
-    - name: "testManifestWork"
-      transport:
-        client: "maestro"
-        maestro:
-          targetCluster: "{{ .clusterName }}"
-      manifest:
-        apiVersion: work.open-cluster-management.io/v1
-        kind: ManifestWork
-        metadata:
-          name: "inline-mw"
-        spec:
-          workload:
-            manifests: []
-      discovery:
-        bySelectors:
-          labelSelector:
-            app: "test"
+params:
+  - name: "clusterName"
+    source: "event.name"
+resources:
+  - name: "testManifestWork"
+    transport:
+      client: "maestro"
+      maestro:
+        target_cluster: "{{ .clusterName }}"
+    manifest:
+      apiVersion: work.open-cluster-management.io/v1
+      kind: ManifestWork
+      metadata:
+        name: "inline-mw"
+      spec:
+        workload:
+          manifests: []
+    discovery:
+      by_selectors:
+        label_selector:
+          app: "test"
 `
 
 	adapterPath, taskPath := createTestConfigFiles(t, tmpDir, adapterYAML, taskYAML)
@@ -1753,8 +1454,8 @@ spec:
 	require.NotNil(t, config)
 
 	// Verify inline manifest (ManifestWork) is preserved as-is
-	require.Len(t, config.Spec.Resources, 1)
-	resource := config.Spec.Resources[0]
+	require.Len(t, config.Resources, 1)
+	resource := config.Resources[0]
 
 	mw, ok := resource.Manifest.(map[string]interface{})
 	require.True(t, ok, "Manifest should be a map")
