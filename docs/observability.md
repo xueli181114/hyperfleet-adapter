@@ -89,3 +89,7 @@ The adapter automatically registers Prometheus metrics from the [hyperfleet-brok
 | `hyperfleet_broker_message_duration_seconds` | Histogram | Message processing duration |
 
 These metrics use the `hyperfleet_broker_` prefix and include the adapter's `component` and `version` labels.
+
+## Alerting and Monitoring
+
+For recommended alerting rules, thresholds, and operational PromQL queries, see [metrics.md](metrics.md).
