@@ -11,7 +11,7 @@ const EnvUserAgent = "HYPERFLEET_USER_AGENT"
 // Example: go build -ldflags "-X github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version.Version=1.0.0"
 var (
 	// Version is the semantic version of the adapter
-	Version = "0.1.0"
+	Version = "0.0.0-dev"
 
 	// Commit is the git commit SHA
 	Commit = "none"

@@ -14,13 +14,13 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
 GIT_TAG ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "")
-VERSION ?= $(GIT_SHA)$(GIT_DIRTY)
+APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
 GOFLAGS ?= -trimpath
 VERSION_PKG := github.com/openshift-hyperfleet/hyperfleet-adapter/pkg/version
 LDFLAGS := -s -w \
-           -X $(VERSION_PKG).Version=$(VERSION) \
+           -X $(VERSION_PKG).Version=$(APP_VERSION) \
            -X $(VERSION_PKG).Commit=$(GIT_SHA) \
            -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 ifneq ($(GIT_TAG),)
@@ -39,7 +39,7 @@ DEV_BASE_IMAGE ?= registry.access.redhat.com/ubi9/ubi-minimal:latest
 # =============================================================================
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_NAME ?= hyperfleet-adapter
-IMAGE_TAG ?= $(VERSION)
+IMAGE_TAG ?= $(APP_VERSION)
 
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
@@ -210,7 +210,7 @@ image: check-container-tool ## Build container image
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
@@ -237,7 +237,7 @@ endif
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)

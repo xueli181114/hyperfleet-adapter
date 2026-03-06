@@ -5,7 +5,11 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 ARG GIT_SHA=unknown
 ARG GIT_DIRTY=""
 ARG BUILD_DATE=""
-ARG VERSION=""
+# APP_VERSION avoids collision with the go-toolset base image's
+# ENV VERSION=<go-version> which shadows a same-named ARG in RUN commands.
+ARG APP_VERSION="0.0.0-dev"
+# Override the base image's ENV VERSION=<go-version> to avoid polluting the Makefile
+ENV VERSION=${APP_VERSION}
 
 # Install make as root (UBI9 go-toolset doesn't include it), then switch back to non-root.
 USER root
@@ -29,7 +33,7 @@ COPY --chown=1001:0 . .
 RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     --mount=type=cache,target=/opt/app-root/src/.cache/go-build,uid=1001 \
     CGO_ENABLED=0 GOOS=linux \
-    GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} VERSION=${VERSION} \
+    GIT_SHA=${GIT_SHA} GIT_DIRTY=${GIT_DIRTY} BUILD_DATE=${BUILD_DATE} \
     make build
 
 # Runtime stage
@@ -46,9 +50,9 @@ EXPOSE 8080
 ENTRYPOINT ["/app/adapter"]
 CMD ["serve"]
 
-ARG VERSION=""
+ARG APP_VERSION="0.0.0-dev"
 LABEL name="hyperfleet-adapter" \
       vendor="Red Hat" \
-      version="${VERSION}" \
+      version="${APP_VERSION}" \
       summary="HyperFleet Adapter - Event-driven adapter services for HyperFleet cluster provisioning" \
       description="Handles CloudEvents consumption, AdapterConfig CRD integration, precondition evaluation, Kubernetes Job creation/monitoring, and status reporting via API"
