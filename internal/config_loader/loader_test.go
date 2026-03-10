@@ -718,6 +718,16 @@ func TestValidateAdapterVersion(t *testing.T) {
 	err = ValidateAdapterVersion(config, "")
 	assert.NoError(t, err)
 
+	// Dev build versions (0.0.0-* skip validation)
+	err = ValidateAdapterVersion(config, "0.0.0-dev")
+	assert.NoError(t, err)
+
+	err = ValidateAdapterVersion(config, "0.0.0-master")
+	assert.NoError(t, err)
+
+	err = ValidateAdapterVersion(config, "v0.0.0-dev")
+	assert.NoError(t, err)
+
 	// Pre-release version with same major.minor - should pass
 	err = ValidateAdapterVersion(config, "1.0.1-rc.1")
 	assert.NoError(t, err)

@@ -131,7 +131,8 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set adapterConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set adapterTaskConfig.yaml="apiVersion: hyperfleet.redhat.com/v1alpha1" \
 		--set podDisruptionBudget.enabled=true \
-		--set podDisruptionBudget.minAvailable=1 > /dev/null
+		--set podDisruptionBudget.minAvailable=1 \
+		--set podDisruptionBudget.maxUnavailable=null > /dev/null
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with autoscaling..."

@@ -653,6 +653,11 @@ func ValidateAdapterVersion(config *AdapterConfig, expectedVersion string) error
 		return fmt.Errorf("invalid expected adapter version %q: %w", expectedVersion, err)
 	}
 
+	// Skip validation for dev builds (0.0.0-*) where major, minor, and patch are all zero
+	if expectedSemver.Major() == 0 && expectedSemver.Minor() == 0 && expectedSemver.Patch() == 0 {
+		return nil
+	}
+
 	if configSemver.Major() != expectedSemver.Major() || configSemver.Minor() != expectedSemver.Minor() {
 		return fmt.Errorf("adapter version mismatch: config %q (major.minor=%d.%d) != adapter %q (major.minor=%d.%d)",
 			configVersion, configSemver.Major(), configSemver.Minor(),
